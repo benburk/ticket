@@ -236,7 +236,8 @@ fn main() -> Result<()> {
 
 fn ensure_init(storage: &Storage) -> Result<()> {
     if !storage.is_initialized() {
-        anyhow::bail!("Not initialized. Run 'tk init' first.");
+        storage.init()?;
+        eprintln!("Initialized .tickets/");
     }
     Ok(())
 }
