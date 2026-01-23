@@ -4,8 +4,23 @@ A lightweight, git-backed ticket tracker following Unix philosophy. Tickets are 
 
 ## Install
 
+### Cargo
+
 ```bash
 cargo install --path .
+```
+
+### NixOS / Nix
+
+```bash
+# Build
+nix build .#tk
+
+# Install to profile
+nix profile add /path/to/ticket#tk
+
+# Upgrade after changes
+nix profile upgrade tk
 ```
 
 ## Quick Start
