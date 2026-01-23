@@ -160,17 +160,45 @@ Numeric priority is simple:
 
 Agents can sort by priority without understanding label semantics.
 
-## Why Types (task/bug/feature/epic/chore)?
+## Why Types Align with Conventional Commits?
 
-Minimal taxonomy that covers most needs:
+Ticket types follow [conventional commits](https://www.conventionalcommits.org/):
 
-- **task**: Generic work item
-- **bug**: Something broken
-- **feature**: New capability
-- **epic**: Large effort containing subtasks
-- **chore**: Maintenance, refactoring, dependencies
+| Type       | Semver | Meaning                         |
+| ---------- | ------ | ------------------------------- |
+| `feat`     | MINOR  | New feature                     |
+| `fix`      | PATCH  | Bug fix                         |
+| `chore`    | -      | Maintenance                     |
+| `docs`     | -      | Documentation                   |
+| `refactor` | -      | Code change, no behavior change |
+| `test`     | -      | Test coverage                   |
 
-Not included: story, spike, tech-debt, improvement, enhancement. These map to the above.
+**Why not task/bug/feature/epic?**
+
+The old types were Jira-inspired but didn't connect to anything:
+
+- "task" is too generic—what kind of task?
+- "epic" is about size, not type—use parent-child for hierarchy
+- "bug" vs "fix" is the same thing with different names
+
+**Why conventional commits matter:**
+
+The types create a pipeline:
+
+```
+ticket type → commit prefix → semver bump → changelog section
+    fix     →     fix:      →    PATCH    →   "Bug Fixes"
+    feat    →     feat:     →    MINOR    →   "Features"
+```
+
+Benefits:
+
+- **Predictable commits**: Ticket type tells you the commit prefix
+- **Automated releases**: Close tickets → generate changelog → bump version
+- **Consistent vocabulary**: Same terms from planning through release
+- **TDD alignment**: Write a `fix` ticket, write a failing test, fix it
+
+Agents can reason about impact: "This is a `feat`, so it's a MINOR bump."
 
 ## Why JSON Output Flag?
 
@@ -180,7 +208,7 @@ Every command supports `--json` because:
 - **Scripting**: Build automation on top of tk
 - **Agent-friendly**: Structured output for programmatic consumption
 
-Example: `tk query | jq '.[] | select(.type=="bug" and .priority==1)'`
+Example: `tk query | jq '.[] | select(.type=="fix" and .priority==1)'`
 
 ## Why `tk` Instead of `ticket`?
 

@@ -22,9 +22,9 @@ tk ready                   # What can I work on?
 ```bash
 # Start a project
 tk init
-tk create "Set up database schema" --type feature
-tk create "Implement user auth" --type feature
-tk create "Fix login timeout bug" --type bug --priority 1
+tk create "Set up database schema" --type feat
+tk create "Implement user auth" --type feat
+tk create "Fix login timeout bug" --type fix --priority 1
 
 # Add dependencies (auth needs db first)
 tk dep tk-auth tk-db       # auth depends on db
@@ -32,14 +32,14 @@ tk dep tk-auth tk-db       # auth depends on db
 # Check what's ready to work on
 tk ready
 # tk-db   [P2] Set up database schema
-# tk-bug  [P1] Fix login timeout bug
+# tk-fix  [P1] Fix login timeout bug
 
 # Start working
 tk start tk-db
 tk list
 # [>] tk-db   [P2] Set up database schema
 # [B] tk-auth [P2] Implement user auth
-# [ ] tk-bug  [P1] Fix login timeout bug
+# [ ] tk-fix  [P1] Fix login timeout bug
 
 # Add notes as you work
 tk note tk-db "Added users and sessions tables"
@@ -49,7 +49,7 @@ tk note tk-db "Need to add indexes for performance"
 tk close tk-db
 tk ready
 # tk-auth [P2] Implement user auth  <- now unblocked!
-# tk-bug  [P1] Fix login timeout bug
+# tk-fix  [P1] Fix login timeout bug
 
 # Commit your tickets with your code
 git add .tickets && git commit -m "Track project tasks"
@@ -96,7 +96,7 @@ Tickets are Markdown files with YAML frontmatter:
 ---
 id: tk-a1b2
 status: open
-type: feature
+type: feat
 priority: 2
 created: 2024-01-15T10:30:00Z
 deps:
@@ -125,11 +125,26 @@ tk ready --tag backend   # Ready tickets with tag
 tk blocked --tag urgent  # Blocked tickets with tag
 ```
 
+## Types
+
+Ticket types align with [conventional commits](https://www.conventionalcommits.org/):
+
+| Type       | Semver | Description                     |
+| ---------- | ------ | ------------------------------- |
+| `feat`     | MINOR  | New feature or capability       |
+| `fix`      | PATCH  | Bug fix                         |
+| `chore`    | -      | Maintenance, dependencies       |
+| `docs`     | -      | Documentation only              |
+| `refactor` | -      | Code change, no behavior change |
+| `test`     | -      | Test coverage                   |
+
+This enables: ticket type → commit type → semver → changelog.
+
 ## Integration with jq
 
 ```bash
-# High priority bugs
-tk query | jq '.[] | select(.type=="bug" and .priority==1)'
+# High priority fixes
+tk query | jq '.[] | select(.type=="fix" and .priority==1)'
 
 # Count by status
 tk query --all | jq 'group_by(.status) | map({status: .[0].status, count: length})'

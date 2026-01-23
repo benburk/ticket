@@ -54,8 +54,8 @@ enum Commands {
         /// Priority (0=critical, 4=backlog)
         #[arg(short, long, default_value = "2")]
         priority: u8,
-        /// Type: task, bug, feature, epic, chore
-        #[arg(short = 't', long, default_value = "task")]
+        /// Type: feat, fix, chore, docs, refactor, test
+        #[arg(short = 't', long, default_value = "feat")]
         r#type: String,
         /// Create as child of parent ticket
         #[arg(long)]

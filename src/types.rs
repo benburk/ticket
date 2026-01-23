@@ -38,26 +38,28 @@ impl std::str::FromStr for Status {
     }
 }
 
-/// Ticket type
+/// Ticket type (aligned with conventional commits)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TicketType {
     #[default]
-    Task,
-    Bug,
-    Feature,
-    Epic,
-    Chore,
+    Feat, // New feature (MINOR version bump)
+    Fix,      // Bug fix (PATCH version bump)
+    Chore,    // Maintenance, deps, no user impact
+    Docs,     // Documentation only
+    Refactor, // Code change, no behavior change
+    Test,     // Test coverage
 }
 
 impl std::fmt::Display for TicketType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TicketType::Task => write!(f, "task"),
-            TicketType::Bug => write!(f, "bug"),
-            TicketType::Feature => write!(f, "feature"),
-            TicketType::Epic => write!(f, "epic"),
+            TicketType::Feat => write!(f, "feat"),
+            TicketType::Fix => write!(f, "fix"),
             TicketType::Chore => write!(f, "chore"),
+            TicketType::Docs => write!(f, "docs"),
+            TicketType::Refactor => write!(f, "refactor"),
+            TicketType::Test => write!(f, "test"),
         }
     }
 }
@@ -67,12 +69,20 @@ impl std::str::FromStr for TicketType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "task" => Ok(TicketType::Task),
-            "bug" => Ok(TicketType::Bug),
-            "feature" => Ok(TicketType::Feature),
-            "epic" => Ok(TicketType::Epic),
+            // Primary types
+            "feat" | "feature" => Ok(TicketType::Feat),
+            "fix" | "bug" => Ok(TicketType::Fix),
             "chore" => Ok(TicketType::Chore),
-            _ => anyhow::bail!("Invalid type: {}. Use: task, bug, feature, epic, chore", s),
+            "docs" => Ok(TicketType::Docs),
+            "refactor" => Ok(TicketType::Refactor),
+            "test" => Ok(TicketType::Test),
+            // Legacy aliases
+            "task" => Ok(TicketType::Feat),
+            "epic" => Ok(TicketType::Feat),
+            _ => anyhow::bail!(
+                "Invalid type: {}. Use: feat, fix, chore, docs, refactor, test",
+                s
+            ),
         }
     }
 }
@@ -120,7 +130,7 @@ impl Ticket {
                 created: Utc::now(),
                 updated: None,
                 closed: None,
-                ticket_type: TicketType::Task,
+                ticket_type: TicketType::Feat,
                 priority: 2,
                 assignee: None,
                 parent: None,
