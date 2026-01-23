@@ -244,3 +244,97 @@ Git-native tickets:
 - **Merge with code**: Close tickets when PR merges
 - **Work offline**: Full functionality without internet
 - **Portable**: Switch hosts freely, tickets come along
+
+## How Are Merges Handled?
+
+File-per-ticket makes most merges automatic:
+
+- **Different tickets**: Branch A adds `tk-a1b2.md`, branch B adds `tk-c3d4.md` → auto-merge
+- **Same ticket, different sections**: Git's line-based merge usually succeeds
+- **Same ticket, same lines**: Manual conflict resolution (rare with hash IDs)
+
+The design minimizes conflicts by:
+
+- **Hash IDs**: Two branches won't accidentally create the same ticket ID
+- **Small files**: Each ticket is ~20-50 lines, not a 10,000-line database
+- **Append-only notes**: Notes add lines, they don't modify existing ones
+
+Worst case: Two people edit the same ticket's title simultaneously. Git marks the conflict, you pick one. This is rare and recoverable.
+
+## Why `.tickets/` Directory Instead of Separate Branch?
+
+Some tools store metadata on a separate git branch (like `gh-pages` or `git-notes`). We use a directory because:
+
+**Separate branch problems:**
+
+- **Invisible**: `git log` doesn't show ticket changes alongside code changes
+- **Context switch**: Must checkout another branch to read tickets
+- **Merge complexity**: How do you merge ticket branches when code branches merge?
+- **Tooling friction**: IDEs don't naturally show files from other branches
+
+**Directory advantages:**
+
+- **Visible history**: `git log` shows ticket changes with the code that motivated them
+- **Branch together**: Checkout feature branch, see feature's tickets
+- **Simple mental model**: Tickets are just files, like README or docs
+- **IDE integration**: Tickets appear in file tree, searchable, clickable
+
+Trade-off: Yes, ticket commits appear in your main history. We think this is a feature, not a bug—the ticket _is_ part of the project.
+
+## What About Git History Clutter?
+
+Valid concern. Frequent ticket updates mean frequent commits:
+
+```
+a1b2c3d Update auth ticket status
+b2c3d4e Add note to database ticket
+c3d4e5f Close login bug
+d4e5f6a Actually fix the login bug  ← the "real" commit
+```
+
+Mitigations:
+
+- **Squash on merge**: PR branches can have noisy history; squash when merging to main
+- **Commit with code**: `git add src/ .tickets/ && git commit` bundles ticket changes with code changes
+- **Batch updates**: Update multiple tickets, commit once
+- **Separate commits are fine**: Git handles thousands of commits; history clutter is aesthetic, not functional
+
+Philosophical stance: Ticket state changes _are_ project history. Knowing when a ticket was closed, who added a note, what the status was at commit X—this is valuable, not noise.
+
+If you disagree, use `.gitignore` to exclude `.tickets/` and manage them separately.
+
+## What We Intentionally Don't Do
+
+**No import from GitHub/GitLab/Jira**
+
+- Migration tools are complex and break often
+- Each source has different schemas, edge cases
+- Manual migration is tedious but reliable
+- PRs welcome if someone wants this
+
+**No multi-agent coordination**
+
+- Beads has molecules, gates, slots for agent orchestration
+- We don't—tk is a ticket tracker, not an agent framework
+- Multiple agents can use tk, but they coordinate externally
+- Hash IDs prevent creation conflicts; workflow conflicts are your problem
+
+**No real-time sync**
+
+- No daemon watching for changes
+- No WebSocket updates
+- No collaborative editing
+- Run `tk list` to see current state; it reads files, always fresh
+
+**No web UI** (repeated for emphasis)
+
+- CLI only
+- Use GitHub/GitLab file browser for web viewing
+- Build your own if needed; tickets are just markdown files
+
+**No mobile app**
+
+- Edit files via GitHub mobile if desperate
+- This is a developer tool for developers at terminals
+
+The goal is a tool that does one thing well, not a platform that does everything poorly.
