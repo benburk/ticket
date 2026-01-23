@@ -57,35 +57,32 @@ git add .tickets && git commit -m "Track project tasks"
 
 ## Commands
 
-| Command               | Description                       |
-| --------------------- | --------------------------------- |
-| `init`                | Initialize `.tickets/` directory  |
-| `create <title>`      | Create a new ticket               |
-| `list`                | List all tickets                  |
-| `show <id>`           | Show ticket details               |
-| `edit <id>`           | Edit ticket in `$EDITOR`          |
-| `start <id>`          | Mark ticket as in-progress        |
-| `close <id>`          | Close a ticket                    |
-| `reopen <id>`         | Reopen a closed ticket            |
-| `dep <id> <dep-id>`   | Add blocking dependency           |
-| `undep <id> <dep-id>` | Remove dependency                 |
-| `link <id1> <id2>`    | Add symmetric link (non-blocking) |
-| `unlink <id1> <id2>`  | Remove link                       |
-| `ready`               | List tickets ready to work on     |
-| `blocked`             | List blocked tickets              |
-| `dep-cycle`           | Detect dependency cycles          |
-| `tree <id>`           | Show dependency tree              |
-| `note <id> <text>`    | Add timestamped note              |
-| `archive <id>`        | Move to archive                   |
-| `unarchive <id>`      | Restore from archive              |
-| `delete <id>`         | Permanently delete                |
-| `query`               | Output JSON for piping to `jq`    |
+| Command               | Description                      |
+| --------------------- | -------------------------------- |
+| `init`                | Initialize `.tickets/` directory |
+| `create <title>`      | Create a new ticket              |
+| `list`                | List all tickets                 |
+| `show <id>`           | Show ticket details              |
+| `edit <id>`           | Edit ticket in `$EDITOR`         |
+| `start <id>`          | Mark ticket as in-progress       |
+| `close <id>`          | Close a ticket                   |
+| `reopen <id>`         | Reopen a closed ticket           |
+| `dep <id> <dep-id>`   | Add blocking dependency          |
+| `undep <id> <dep-id>` | Remove dependency                |
+| `ready`               | List tickets ready to work on    |
+| `blocked`             | List blocked tickets             |
+| `dep-cycle`           | Detect dependency cycles         |
+| `tree <id>`           | Show dependency tree             |
+| `note <id> <text>`    | Add timestamped note             |
+| `archive <id>`        | Move to archive                  |
+| `unarchive <id>`      | Restore from archive             |
+| `delete <id>`         | Permanently delete               |
+| `prime`               | Output agent instructions        |
+| `query`               | Output JSON for piping to `jq`   |
 
 ## Concepts
 
 **deps** - Blocking dependencies. A ticket with open deps appears in `blocked`, not `ready`.
-
-**links** - Symmetric relationships for reference. Non-blocking, just for organization.
 
 **ready** - Open tickets with no unresolved dependencies.
 
@@ -119,11 +116,13 @@ Add JWT-based auth with refresh tokens.
 ## Options
 
 ```bash
-tk --json list    # JSON output for scripting
-tk list --all     # Include archived tickets
-tk list --status open
-tk list --type bug
-tk list --assignee alice
+tk --json list           # JSON output for scripting
+tk list --all            # Include archived tickets
+tk list --status open    # Filter by status
+tk list --tag backend    # Filter by tag
+tk list --tag a,b        # Multiple tags (AND logic)
+tk ready --tag backend   # Ready tickets with tag
+tk blocked --tag urgent  # Blocked tickets with tag
 ```
 
 ## Integration with jq
@@ -138,6 +137,22 @@ tk query --all | jq 'group_by(.status) | map({status: .[0].status, count: length
 # Export to CSV
 tk query | jq -r '.[] | [.id, .title, .status] | @csv'
 ```
+
+## Agent Integration
+
+Use `tk prime` to output instructions for AI agents:
+
+```bash
+tk prime           # Outputs usage guide + project state
+tk prime | head    # First few lines for context window
+```
+
+The prime command outputs:
+
+- Key concepts (deps, ready, blocked)
+- Common workflow
+- Command reference
+- Current project state (if initialized)
 
 ## Philosophy
 

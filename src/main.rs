@@ -21,7 +21,6 @@ Each ticket is a separate file, making git diffs readable and merges easy.
 
 Key concepts:
   - deps: blocking dependencies (must close dep before this is ready)
-  - links: symmetric relationships (for reference, doesn't block)
   - ready: open tickets with no unresolved deps
   - blocked: open tickets waiting on deps
 
@@ -72,6 +71,9 @@ enum Commands {
         /// Filter by status
         #[arg(short, long)]
         status: Option<String>,
+        /// Filter by tag (comma-separated for multiple, AND logic)
+        #[arg(short = 't', long)]
+        tag: Option<String>,
         /// Show archived tickets too
         #[arg(short, long)]
         all: bool,
@@ -131,27 +133,19 @@ enum Commands {
         dep_id: String,
     },
 
-    /// Add a symmetric link (non-blocking relationship)
-    Link {
-        /// First ticket
-        id1: String,
-        /// Second ticket
-        id2: String,
-    },
-
-    /// Remove a symmetric link
-    Unlink {
-        /// First ticket
-        id1: String,
-        /// Second ticket
-        id2: String,
-    },
-
     /// List tickets ready to work on (open, no unresolved deps)
-    Ready,
+    Ready {
+        /// Filter by tag (comma-separated for multiple, AND logic)
+        #[arg(short = 't', long)]
+        tag: Option<String>,
+    },
 
     /// List blocked tickets (open, has unresolved deps)
-    Blocked,
+    Blocked {
+        /// Filter by tag (comma-separated for multiple, AND logic)
+        #[arg(short = 't', long)]
+        tag: Option<String>,
+    },
 
     /// Detect dependency cycles
     #[command(name = "dep-cycle")]
@@ -195,6 +189,9 @@ enum Commands {
         force: bool,
     },
 
+    /// Output agent instructions for using tk
+    Prime,
+
     /// Query tickets as JSON (pipe to jq)
     Query {
         /// Optional jq-style filter (requires jq)
@@ -215,7 +212,7 @@ fn main() -> Result<()> {
             parent,
             tags,
         } => cmd_create(&storage, title, priority, &r#type, parent, tags, cli.json),
-        Commands::List { status, all } => cmd_list(&storage, status, all, cli.json),
+        Commands::List { status, tag, all } => cmd_list(&storage, status, tag, all, cli.json),
         Commands::Show { id } => cmd_show(&storage, &id, cli.json),
         Commands::Edit { id } => cmd_edit(&storage, &id),
         Commands::Status { id, status } => cmd_status(&storage, &id, &status, cli.json),
@@ -224,16 +221,15 @@ fn main() -> Result<()> {
         Commands::Reopen { id } => cmd_status(&storage, &id, "open", cli.json),
         Commands::Dep { id, dep_id } => cmd_dep(&storage, &id, &dep_id, cli.json),
         Commands::Undep { id, dep_id } => cmd_undep(&storage, &id, &dep_id, cli.json),
-        Commands::Link { id1, id2 } => cmd_link(&storage, &id1, &id2, cli.json),
-        Commands::Unlink { id1, id2 } => cmd_unlink(&storage, &id1, &id2, cli.json),
-        Commands::Ready => cmd_ready(&storage, cli.json),
-        Commands::Blocked => cmd_blocked(&storage, cli.json),
+        Commands::Ready { tag } => cmd_ready(&storage, tag, cli.json),
+        Commands::Blocked { tag } => cmd_blocked(&storage, tag, cli.json),
         Commands::DepCycle => cmd_dep_cycle(&storage, cli.json),
         Commands::Tree { id, full } => cmd_tree(&storage, &id, full, cli.json),
         Commands::Note { id, content } => cmd_note(&storage, &id, content, cli.json),
         Commands::Archive { id } => cmd_archive(&storage, &id, cli.json),
         Commands::Unarchive { id } => cmd_unarchive(&storage, &id, cli.json),
         Commands::Delete { id, force } => cmd_delete(&storage, &id, force, cli.json),
+        Commands::Prime => cmd_prime(&storage),
         Commands::Query { filter } => cmd_query(&storage, filter),
     }
 }
@@ -309,7 +305,13 @@ fn cmd_create(
     Ok(())
 }
 
-fn cmd_list(storage: &Storage, status: Option<String>, all: bool, json: bool) -> Result<()> {
+fn cmd_list(
+    storage: &Storage,
+    status: Option<String>,
+    tag: Option<String>,
+    all: bool,
+    json: bool,
+) -> Result<()> {
     ensure_init(storage)?;
 
     let tickets = if all {
@@ -319,10 +321,16 @@ fn cmd_list(storage: &Storage, status: Option<String>, all: bool, json: bool) ->
     };
 
     let status_filter: Option<Status> = status.map(|s| s.parse()).transpose()?;
+    let tags_filter: Vec<String> = tag
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
 
     let mut filtered: Vec<_> = tickets
         .iter()
         .filter(|t| status_filter.map_or(true, |s| t.meta.status == s))
+        .filter(|t| {
+            tags_filter.is_empty() || tags_filter.iter().all(|tag| t.meta.tags.contains(tag))
+        })
         .collect();
 
     filtered.sort_by(|a, b| {
@@ -377,7 +385,6 @@ fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
             "priority": ticket.meta.priority,
             "type": ticket.meta.ticket_type.to_string(),
             "deps": ticket.meta.deps,
-            "links": ticket.meta.links,
             "tags": ticket.meta.tags,
             "created": ticket.meta.created,
             "body": ticket.body,
@@ -398,9 +405,6 @@ fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
         }
         if !ticket.meta.deps.is_empty() {
             println!("Deps:     {}", ticket.meta.deps.join(", "));
-        }
-        if !ticket.meta.links.is_empty() {
-            println!("Links:    {}", ticket.meta.links.join(", "));
         }
         if !ticket.meta.tags.is_empty() {
             println!("Tags:     {}", ticket.meta.tags.join(", "));
@@ -530,73 +534,20 @@ fn cmd_undep(storage: &Storage, id: &str, dep_id: &str, json: bool) -> Result<()
     Ok(())
 }
 
-fn cmd_link(storage: &Storage, id1: &str, id2: &str, json: bool) -> Result<()> {
-    ensure_init(storage)?;
-
-    let mut t1 = storage
-        .find_by_prefix(id1)?
-        .context(format!("Ticket '{}' not found", id1))?;
-
-    let mut t2 = storage
-        .find_by_prefix(id2)?
-        .context(format!("Ticket '{}' not found", id2))?;
-
-    // Add symmetric links
-    if !t1.meta.links.contains(&t2.id().to_string()) {
-        t1.meta.links.push(t2.id().to_string());
-        t1.touch();
-        storage.save(&t1)?;
-    }
-
-    if !t2.meta.links.contains(&t1.id().to_string()) {
-        t2.meta.links.push(t1.id().to_string());
-        t2.touch();
-        storage.save(&t2)?;
-    }
-
-    if json {
-        println!(r#"{{"linked":["{}","{}"]}}"#, t1.id(), t2.id());
-    } else {
-        println!("Linked {} <-> {}", t1.id(), t2.id());
-    }
-    Ok(())
-}
-
-fn cmd_unlink(storage: &Storage, id1: &str, id2: &str, json: bool) -> Result<()> {
-    ensure_init(storage)?;
-
-    let mut t1 = storage
-        .find_by_prefix(id1)?
-        .context(format!("Ticket '{}' not found", id1))?;
-
-    let mut t2 = storage
-        .find_by_prefix(id2)?
-        .context(format!("Ticket '{}' not found", id2))?;
-
-    t1.meta.links.retain(|l| l != t2.id());
-    t1.touch();
-    storage.save(&t1)?;
-
-    t2.meta.links.retain(|l| l != t1.id());
-    t2.touch();
-    storage.save(&t2)?;
-
-    if json {
-        println!(r#"{{"unlinked":true}}"#);
-    } else {
-        println!("Unlinked {} <-> {}", t1.id(), t2.id());
-    }
-    Ok(())
-}
-
-fn cmd_ready(storage: &Storage, json: bool) -> Result<()> {
+fn cmd_ready(storage: &Storage, tag: Option<String>, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
     let tickets = storage.load_all()?;
+    let tags_filter: Vec<String> = tag
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
 
     let mut ready: Vec<_> = tickets
         .iter()
         .filter(|t| t.is_open() && !t.is_blocked_by(&tickets))
+        .filter(|t| {
+            tags_filter.is_empty() || tags_filter.iter().all(|tag| t.meta.tags.contains(tag))
+        })
         .collect();
 
     ready.sort_by_key(|t| t.meta.priority);
@@ -623,14 +574,20 @@ fn cmd_ready(storage: &Storage, json: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_blocked(storage: &Storage, json: bool) -> Result<()> {
+fn cmd_blocked(storage: &Storage, tag: Option<String>, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
     let tickets = storage.load_all()?;
+    let tags_filter: Vec<String> = tag
+        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
 
     let mut blocked: Vec<_> = tickets
         .iter()
         .filter(|t| t.is_open() && t.is_blocked_by(&tickets))
+        .filter(|t| {
+            tags_filter.is_empty() || tags_filter.iter().all(|tag| t.meta.tags.contains(tag))
+        })
         .collect();
 
     blocked.sort_by_key(|t| t.meta.priority);
@@ -948,6 +905,81 @@ fn cmd_delete(storage: &Storage, id: &str, force: bool, json: bool) -> Result<()
     Ok(())
 }
 
+fn cmd_prime(storage: &Storage) -> Result<()> {
+    let instructions = r#"# tk - Ticket Tracker Instructions
+
+## Overview
+tk is a minimal, git-backed ticket tracker. Tickets are markdown files in `.tickets/`.
+
+## Key Concepts
+- **deps**: Blocking dependencies. A ticket with open deps is blocked.
+- **ready**: Open tickets with no unresolved deps (work on these).
+- **blocked**: Open tickets waiting on deps.
+
+## Workflow
+1. `tk ready` - See what's available to work on
+2. `tk start <id>` - Mark ticket in-progress
+3. `tk close <id>` - Mark done when finished
+4. `tk create "title"` - Create new tickets as needed
+
+## Common Commands
+```
+tk ready                    # What can I work on?
+tk list                     # All tickets
+tk list --status open       # Filter by status
+tk list --tag backend       # Filter by tag
+tk show <id>                # Ticket details
+tk create "Fix bug" -t bug  # Create ticket
+tk start <id>               # Begin work
+tk close <id>               # Finish work
+tk dep <id> <blocker>       # Add dependency
+tk note <id> "message"      # Add note
+```
+
+## JSON Output
+Add `--json` to any command for structured output:
+```
+tk ready --json | jq '.[0].id'
+tk query | jq '.[] | select(.type=="bug")'
+```
+"#;
+
+    print!("{}", instructions);
+
+    // Add dynamic project state if initialized
+    if storage.is_initialized() {
+        let tickets = storage.load_all()?;
+        let open = tickets
+            .iter()
+            .filter(|t| t.meta.status == Status::Open)
+            .count();
+        let in_progress = tickets
+            .iter()
+            .filter(|t| t.meta.status == Status::InProgress)
+            .count();
+        let blocked_count = tickets
+            .iter()
+            .filter(|t| t.is_open() && t.is_blocked_by(&tickets))
+            .count();
+        let ready_count = tickets
+            .iter()
+            .filter(|t| t.is_open() && !t.is_blocked_by(&tickets))
+            .count();
+
+        println!("\n## Current Project State");
+        println!(
+            "- {} open ({} ready, {} blocked)",
+            open + in_progress,
+            ready_count,
+            blocked_count
+        );
+        println!("- {} in progress", in_progress);
+        println!("- {} total tickets", tickets.len());
+    }
+
+    Ok(())
+}
+
 fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
     ensure_init(storage)?;
 
@@ -963,7 +995,6 @@ fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
                 "priority": t.meta.priority,
                 "type": t.meta.ticket_type.to_string(),
                 "deps": t.meta.deps,
-                "links": t.meta.links,
                 "tags": t.meta.tags,
                 "created": t.meta.created,
                 "parent": t.meta.parent,

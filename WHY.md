@@ -78,28 +78,6 @@ Without a daemon:
 - **No surprises**: Filesystem state = truth, always
 - **Debuggable**: Something wrong? Just look at the files
 
-## Why Blocking Deps vs Symmetric Links?
-
-Most trackers have one relationship type. We have two:
-
-**Deps (blocking)**: "This ticket cannot start until that one closes"
-
-- Directional: A depends on B (not vice versa)
-- Affects workflow: blocked tickets filtered from `ready`
-- Common: "implement auth" depends on "set up database"
-
-**Links (symmetric)**: "These tickets are related"
-
-- Bidirectional: A links to B means B links to A
-- Informational only: doesn't block anything
-- Common: "fix login bug" relates to "fix logout bug"
-
-This distinction matters because:
-
-- **Ready/blocked commands work correctly**: Only true blockers affect workflow
-- **Agents can reason about dependencies**: Clear semantics for planning
-- **Humans see relationships**: Without cluttering the dependency graph
-
 ## Why Ready and Blocked Commands?
 
 Traditional trackers show status (open/closed). We show workflow state:

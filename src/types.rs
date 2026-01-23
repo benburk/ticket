@@ -85,8 +85,6 @@ pub struct Frontmatter {
     pub status: Status,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deps: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub links: Vec<String>,
     pub created: DateTime<Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated: Option<DateTime<Utc>>,
@@ -119,7 +117,6 @@ impl Ticket {
                 id,
                 status: Status::Open,
                 deps: vec![],
-                links: vec![],
                 created: Utc::now(),
                 updated: None,
                 closed: None,
