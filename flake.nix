@@ -6,21 +6,52 @@
   outputs =
     { self, nixpkgs }:
     let
-      system = "aarch64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      supportedSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
     in
     {
-      devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [
-          cargo
-          rustc
-          clippy
-          rust-analyzer
-          rustfmt
-          sqlx-cli
-          openssl
-          pkg-config
-        ];
-      };
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          tk = pkgs.rustPlatform.buildRustPackage {
+            pname = "tk";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+            meta = {
+              description = "A minimal, Unix-philosophy ticket tracker";
+              mainProgram = "tk";
+            };
+          };
+          default = self.packages.${system}.tk;
+        }
+      );
+
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = with pkgs; [
+              cargo
+              rustc
+              clippy
+              rust-analyzer
+              rustfmt
+              dprint
+            ];
+          };
+        }
+      );
     };
 }
