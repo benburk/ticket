@@ -81,7 +81,7 @@ impl Storage {
     }
 
     /// Extract title from first # heading, return (title, remaining body)
-    fn extract_title(body: &str) -> (String, &str) {
+    pub fn extract_title(body: &str) -> (String, &str) {
         for line in body.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with("# ") {

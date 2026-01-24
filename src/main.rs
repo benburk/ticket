@@ -25,12 +25,11 @@ Key concepts:
   - blocked: open tickets waiting on deps
 
 Workflow:
-  1. tk init              # Initialize .tickets/
-  2. tk create \"Task\"     # Create a ticket
-     echo \"desc\" | tk create \"Task\"  # ...with description
-  3. tk ready             # See what's ready
-  4. tk start <id>        # Mark in-progress
-  5. tk close <id>        # Mark done
+  1. tk init                        # Initialize .tickets/
+  2. echo \"# Task\" | tk create      # Create a ticket
+  3. tk ready                       # See what's ready
+  4. tk start <id>                  # Mark in-progress
+  5. tk close <id>                  # Mark done
   6. git add .tickets && git commit"
 )]
 #[command(version)]
@@ -48,10 +47,8 @@ enum Commands {
     /// Initialize ticket tracking in current directory
     Init,
 
-    /// Create a new ticket (pipe description via stdin)
+    /// Create a new ticket from stdin (expects "# Title" on first line)
     Create {
-        /// Ticket title
-        title: String,
         /// Priority (0=critical, 4=backlog)
         #[arg(short, long, default_value = "2")]
         priority: u8,
@@ -86,7 +83,7 @@ enum Commands {
         id: String,
     },
 
-    /// Replace ticket body from stdin
+    /// Replace ticket title + body from stdin (expects "# Title" on first line)
     Edit {
         /// Ticket ID (prefix match)
         id: String,
@@ -204,12 +201,11 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init => cmd_init(&storage, cli.json),
         Commands::Create {
-            title,
             priority,
             r#type,
             parent,
             tags,
-        } => cmd_create(&storage, title, priority, &r#type, parent, tags, cli.json),
+        } => cmd_create(&storage, priority, &r#type, parent, tags, cli.json),
         Commands::List { status, tag, all } => cmd_list(&storage, status, tag, all, cli.json),
         Commands::Show { id } => cmd_show(&storage, &id, cli.json),
         Commands::Edit { id } => cmd_edit(&storage, &id),
@@ -261,30 +257,30 @@ fn cmd_init(storage: &Storage, json: bool) -> Result<()> {
 
 fn cmd_create(
     storage: &Storage,
-    title: String,
     priority: u8,
     type_str: &str,
     parent: Option<String>,
     tags: Option<String>,
     json: bool,
 ) -> Result<()> {
-    use std::io::{self, IsTerminal, Read};
+    use std::io::Read;
 
     ensure_init(storage)?;
 
-    // Read body from stdin if piped
-    let body = if !io::stdin().is_terminal() {
-        let mut buf = String::new();
-        io::stdin().read_to_string(&mut buf)?;
-        let trimmed = buf.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    } else {
-        None
-    };
+    // Read from stdin
+    let mut buf = String::new();
+    std::io::stdin().read_to_string(&mut buf)?;
+    let input = buf.trim();
+
+    if input.is_empty() {
+        anyhow::bail!("No input provided. Expected: # Title\\n[body]");
+    }
+
+    // Extract title from first # heading
+    let (title, body) = Storage::extract_title(input);
+    if title == "Untitled" && !input.starts_with("# ") {
+        anyhow::bail!("No title found. First line must be: # Your Title");
+    }
 
     let existing = storage.all_ids()?;
 
@@ -308,9 +304,7 @@ fn cmd_create(
     ticket.meta.ticket_type = ticket_type;
     ticket.meta.parent = parent_id;
     ticket.meta.tags = tags;
-    if let Some(b) = body {
-        ticket.body = b;
-    }
+    ticket.body = body.to_string();
 
     storage.save(&ticket)?;
 
@@ -434,7 +428,7 @@ fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
 }
 
 fn cmd_edit(storage: &Storage, id: &str) -> Result<()> {
-    use std::io::{self, Read};
+    use std::io::Read;
 
     ensure_init(storage)?;
 
@@ -442,15 +436,21 @@ fn cmd_edit(storage: &Storage, id: &str) -> Result<()> {
         .find_by_prefix(id)?
         .context(format!("Ticket '{}' not found", id))?;
 
-    // Read new body from stdin
+    // Read title + body from stdin
     let mut buf = String::new();
-    io::stdin().read_to_string(&mut buf)?;
-    let body = buf.trim();
+    std::io::stdin().read_to_string(&mut buf)?;
+    let input = buf.trim();
 
-    if body.is_empty() {
-        anyhow::bail!("No body provided on stdin");
+    if input.is_empty() {
+        anyhow::bail!("No input provided. Expected: # Title\\n[body]");
     }
 
+    let (title, body) = Storage::extract_title(input);
+    if title == "Untitled" && !input.starts_with("# ") {
+        anyhow::bail!("No title found. First line must be: # Your Title");
+    }
+
+    ticket.title = title;
     ticket.body = body.to_string();
     storage.save(&ticket)?;
 
