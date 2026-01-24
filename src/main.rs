@@ -132,10 +132,10 @@ enum Commands {
     #[command(name = "dep-cycle")]
     DepCycle,
 
-    /// Show dependency tree for a ticket
+    /// Show dependency tree (all tickets if no ID given)
     Tree {
-        /// Ticket ID (prefix match)
-        id: String,
+        /// Ticket ID (prefix match), or omit for all tickets
+        id: Option<String>,
         /// Show full tree (include closed)
         #[arg(short, long)]
         full: bool,
@@ -177,7 +177,7 @@ fn main() -> Result<()> {
         Commands::Ready { tag } => cmd_ready(&storage, tag, cli.json),
         Commands::Blocked { tag } => cmd_blocked(&storage, tag, cli.json),
         Commands::DepCycle => cmd_dep_cycle(&storage, cli.json),
-        Commands::Tree { id, full } => cmd_tree(&storage, &id, full, cli.json),
+        Commands::Tree { id, full } => cmd_tree(&storage, id.as_deref(), full, cli.json),
         Commands::Note { id, content } => cmd_note(&storage, &id, content, cli.json),
         Commands::Query { filter } => cmd_query(&storage, filter),
     }
@@ -407,7 +407,20 @@ fn cmd_dep(storage: &Storage, id: &str, dep_id: &str, json: bool) -> Result<()> 
         anyhow::bail!("Dependency already exists");
     }
 
+    // Add dep and check for cycles before saving
     ticket.meta.deps.push(dep.id().to_string());
+
+    let mut all_tickets: Vec<_> = storage
+        .load_all()?
+        .into_iter()
+        .filter(|t| t.id() != ticket.id())
+        .collect();
+    all_tickets.push(ticket.clone());
+
+    if !find_cycles(&all_tickets).is_empty() {
+        anyhow::bail!("Adding this dependency would create a cycle");
+    }
+
     ticket.touch();
     storage.save(&ticket)?;
 
@@ -635,67 +648,103 @@ fn dfs_cycles(
     rec_stack.remove(id);
 }
 
-fn cmd_tree(storage: &Storage, id: &str, full: bool, json: bool) -> Result<()> {
+fn cmd_tree(storage: &Storage, id: Option<&str>, full: bool, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
     let tickets = storage.load_all()?;
-    let ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
 
-    if json {
-        let tree = build_tree_json(&ticket, &tickets, full);
-        println!("{}", serde_json::to_string_pretty(&tree)?);
+    if let Some(id) = id {
+        // Show tree for a single ticket (what it blocks)
+        let ticket = storage
+            .find_by_prefix(id)?
+            .context(format!("Ticket '{}' not found", id))?;
+
+        if json {
+            let tree = build_blocks_json(&ticket, &tickets, full);
+            println!("{}", serde_json::to_string_pretty(&tree)?);
+        } else {
+            let marker = if ticket.is_open() { " " } else { "x" };
+            println!("[{}] {} - {}", marker, ticket.id(), ticket.title);
+            print_blocks_tree(&ticket, &tickets, "", full);
+        }
     } else {
-        println!("{} - {}", ticket.id(), ticket.title);
-        print_dep_tree(&ticket, &tickets, "", full);
+        // Show tree for root tickets (those with no deps)
+        let roots: Vec<_> = tickets
+            .iter()
+            .filter(|t| full || t.is_open())
+            .filter(|t| {
+                t.meta.deps.is_empty()
+                    || t.meta.deps.iter().all(|d| {
+                        tickets
+                            .iter()
+                            .find(|x| x.id() == d)
+                            .map_or(true, |x| !full && !x.is_open())
+                    })
+            })
+            .collect();
+
+        let mut sorted = roots;
+        sorted.sort_by_key(|t| t.id());
+
+        if json {
+            let trees: Vec<_> = sorted
+                .iter()
+                .map(|t| build_blocks_json(t, &tickets, full))
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&trees)?);
+        } else {
+            for ticket in sorted {
+                let marker = if ticket.is_open() { " " } else { "x" };
+                println!("[{}] {} - {}", marker, ticket.id(), ticket.title);
+                print_blocks_tree(ticket, &tickets, "", full);
+            }
+        }
     }
     Ok(())
 }
 
-fn print_dep_tree(ticket: &Ticket, all: &[Ticket], prefix: &str, full: bool) {
-    let deps: Vec<_> = ticket
-        .meta
-        .deps
+/// Print tickets that are blocked by this ticket (depend on it)
+fn print_blocks_tree(ticket: &Ticket, all: &[Ticket], prefix: &str, full: bool) {
+    // Find tickets that have this ticket in their deps
+    let blocked_by_this: Vec<_> = all
         .iter()
-        .filter_map(|d| all.iter().find(|t| t.id() == d))
+        .filter(|t| t.meta.deps.contains(&ticket.id().to_string()))
         .filter(|t| full || t.is_open())
         .collect();
 
-    for (i, dep) in deps.iter().enumerate() {
-        let is_last = i == deps.len() - 1;
+    for (i, blocked) in blocked_by_this.iter().enumerate() {
+        let is_last = i == blocked_by_this.len() - 1;
         let connector = if is_last { "└── " } else { "├── " };
-        let marker = if dep.is_open() { " " } else { "x" };
+        let marker = if blocked.is_open() { " " } else { "x" };
 
         println!(
             "{}{}[{}] {} - {}",
             prefix,
             connector,
             marker,
-            dep.id(),
-            dep.title
+            blocked.id(),
+            blocked.title
         );
 
         let new_prefix = format!("{}{}   ", prefix, if is_last { " " } else { "│" });
-        print_dep_tree(dep, all, &new_prefix, full);
+        print_blocks_tree(blocked, all, &new_prefix, full);
     }
 }
 
-fn build_tree_json(ticket: &Ticket, all: &[Ticket], full: bool) -> serde_json::Value {
-    let deps: Vec<_> = ticket
-        .meta
-        .deps
+fn build_blocks_json(ticket: &Ticket, all: &[Ticket], full: bool) -> serde_json::Value {
+    // Find tickets that have this ticket in their deps
+    let blocked: Vec<_> = all
         .iter()
-        .filter_map(|d| all.iter().find(|t| t.id() == d))
+        .filter(|t| t.meta.deps.contains(&ticket.id().to_string()))
         .filter(|t| full || t.is_open())
-        .map(|t| build_tree_json(t, all, full))
+        .map(|t| build_blocks_json(t, all, full))
         .collect();
 
     serde_json::json!({
         "id": ticket.id(),
         "title": ticket.title,
         "status": ticket.meta.status.to_string(),
-        "deps": deps,
+        "blocks": blocked,
     })
 }
 
