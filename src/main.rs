@@ -27,6 +27,7 @@ Key concepts:
 Workflow:
   1. tk init              # Initialize .tickets/
   2. tk create \"Task\"     # Create a ticket
+     echo \"desc\" | tk create \"Task\"  # ...with description
   3. tk ready             # See what's ready
   4. tk start <id>        # Mark in-progress
   5. tk close <id>        # Mark done
@@ -47,7 +48,7 @@ enum Commands {
     /// Initialize ticket tracking in current directory
     Init,
 
-    /// Create a new ticket
+    /// Create a new ticket (pipe description via stdin)
     Create {
         /// Ticket title
         title: String,
