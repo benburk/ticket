@@ -85,7 +85,7 @@ enum Commands {
         id: String,
     },
 
-    /// Edit ticket in $EDITOR
+    /// Replace ticket body from stdin
     Edit {
         /// Ticket ID (prefix match)
         id: String,
@@ -433,20 +433,25 @@ fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
 }
 
 fn cmd_edit(storage: &Storage, id: &str) -> Result<()> {
+    use std::io::{self, Read};
+
     ensure_init(storage)?;
 
-    let ticket = storage
+    let mut ticket = storage
         .find_by_prefix(id)?
         .context(format!("Ticket '{}' not found", id))?;
 
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-    let path = std::path::PathBuf::from(".tickets").join(format!("{}.md", ticket.id()));
+    // Read new body from stdin
+    let mut buf = String::new();
+    io::stdin().read_to_string(&mut buf)?;
+    let body = buf.trim();
 
-    let status = Command::new(&editor).arg(&path).status()?;
-
-    if !status.success() {
-        anyhow::bail!("Editor exited with error");
+    if body.is_empty() {
+        anyhow::bail!("No body provided on stdin");
     }
+
+    ticket.body = body.to_string();
+    storage.save(&ticket)?;
 
     println!("Updated {}", ticket.id());
     Ok(())
