@@ -72,12 +72,6 @@ enum Commands {
         tag: Option<String>,
     },
 
-    /// Show ticket details
-    Show {
-        /// Ticket ID (prefix match)
-        id: String,
-    },
-
     /// Replace ticket title + body from stdin (expects "# Title" on first line)
     Edit {
         /// Ticket ID (prefix match)
@@ -174,7 +168,6 @@ fn main() -> Result<()> {
             tags,
         } => cmd_create(&storage, priority, &r#type, tags, cli.json),
         Commands::List { status, tag } => cmd_list(&storage, status, tag, cli.json),
-        Commands::Show { id } => cmd_show(&storage, &id, cli.json),
         Commands::Edit { id } => cmd_edit(&storage, &id),
         Commands::Status { id, status } => cmd_status(&storage, &id, &status, cli.json),
         Commands::Close { id } => cmd_close(&storage, &id, cli.json),
@@ -321,49 +314,6 @@ fn cmd_list(
                 Status::Closed => "x",
             };
             println!("[{}] {} [P{}] {}", marker, t.id(), t.meta.priority, t.title);
-        }
-    }
-    Ok(())
-}
-
-fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
-    ensure_init(storage)?;
-
-    let ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
-
-    if json {
-        let obj = serde_json::json!({
-            "id": ticket.id(),
-            "title": ticket.title,
-            "status": ticket.meta.status.to_string(),
-            "priority": ticket.meta.priority,
-            "type": ticket.meta.ticket_type.to_string(),
-            "deps": ticket.meta.deps,
-            "tags": ticket.meta.tags,
-            "created": ticket.meta.created,
-            "body": ticket.body,
-        });
-        println!("{}", serde_json::to_string_pretty(&obj)?);
-    } else {
-        println!("ID:       {}", ticket.id());
-        println!("Title:    {}", ticket.title);
-        println!("Status:   {}", ticket.meta.status);
-        println!("Priority: P{}", ticket.meta.priority);
-        println!("Type:     {}", ticket.meta.ticket_type);
-        println!("Created:  {}", ticket.meta.created.format("%Y-%m-%d %H:%M"));
-        if let Some(updated) = ticket.meta.updated {
-            println!("Updated:  {}", updated.format("%Y-%m-%d %H:%M"));
-        }
-        if !ticket.meta.deps.is_empty() {
-            println!("Deps:     {}", ticket.meta.deps.join(", "));
-        }
-        if !ticket.meta.tags.is_empty() {
-            println!("Tags:     {}", ticket.meta.tags.join(", "));
-        }
-        if !ticket.body.is_empty() {
-            println!("\n{}", ticket.body);
         }
     }
     Ok(())

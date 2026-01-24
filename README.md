@@ -26,7 +26,6 @@ Commands:
   init       Initialize ticket tracking in current directory
   create     Create a new ticket from stdin (expects "# Title" on first line)
   list       List tickets
-  show       Show ticket details
   edit       Replace ticket title + body from stdin (expects "# Title" on first line)
   status     Change ticket status
   close      Close a ticket
