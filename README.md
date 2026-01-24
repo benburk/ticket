@@ -27,7 +27,6 @@ Commands:
   show       Show ticket details
   edit       Replace ticket title + body from stdin (expects "# Title" on first line)
   status     Change ticket status
-  start      Start working on a ticket (set in-progress)
   close      Close a ticket
   reopen     Reopen a ticket
   dep        Add a blocking dependency
@@ -37,8 +36,6 @@ Commands:
   dep-cycle  Detect dependency cycles
   tree       Show dependency tree for a ticket
   note       Add a timestamped note to a ticket
-  archive    Archive a ticket (move to .tickets/archive/)
-  unarchive  Unarchive a ticket
   delete     Delete a ticket permanently
   query      Query tickets as JSON (pipe to jq)
 
@@ -72,6 +69,10 @@ Add JWT-based auth with refresh tokens.
 [2024-01-15 10:45 alice] Started research on JWT libraries
 [2024-01-15 14:30 alice] Going with jsonwebtoken crate
 ```
+
+## Philosophy
+
+See [PHILOSOPHY.md](PHILOSOPHY.md) for the design rationale and recommended git workflow.
 
 ## Inspiration
 

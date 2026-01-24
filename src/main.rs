@@ -28,9 +28,8 @@ Workflow:
   1. tk init                        # Initialize .tickets/
   2. echo \"# Task\" | tk create      # Create a ticket
   3. tk ready                       # See what's ready
-  4. tk start <id>                  # Mark in-progress
-  5. tk close <id>                  # Mark done
-  6. git add .tickets && git commit"
+  4. tk close <id>                  # Mark done
+  5. git add .tickets && git commit"
 )]
 #[command(version)]
 struct Cli {
@@ -72,9 +71,6 @@ enum Commands {
         /// Filter by tag (comma-separated for multiple, AND logic)
         #[arg(short = 't', long)]
         tag: Option<String>,
-        /// Show archived tickets too
-        #[arg(short, long)]
-        all: bool,
     },
 
     /// Show ticket details
@@ -95,12 +91,6 @@ enum Commands {
         id: String,
         /// New status: open, in-progress, closed
         status: String,
-    },
-
-    /// Start working on a ticket (set in-progress)
-    Start {
-        /// Ticket ID (prefix match)
-        id: String,
     },
 
     /// Close a ticket
@@ -166,18 +156,6 @@ enum Commands {
         content: Option<String>,
     },
 
-    /// Archive a ticket (move to .tickets/archive/)
-    Archive {
-        /// Ticket ID (prefix match)
-        id: String,
-    },
-
-    /// Unarchive a ticket
-    Unarchive {
-        /// Ticket ID (prefix match)
-        id: String,
-    },
-
     /// Delete a ticket permanently
     Delete {
         /// Ticket ID (prefix match)
@@ -206,11 +184,10 @@ fn main() -> Result<()> {
             parent,
             tags,
         } => cmd_create(&storage, priority, &r#type, parent, tags, cli.json),
-        Commands::List { status, tag, all } => cmd_list(&storage, status, tag, all, cli.json),
+        Commands::List { status, tag } => cmd_list(&storage, status, tag, cli.json),
         Commands::Show { id } => cmd_show(&storage, &id, cli.json),
         Commands::Edit { id } => cmd_edit(&storage, &id),
         Commands::Status { id, status } => cmd_status(&storage, &id, &status, cli.json),
-        Commands::Start { id } => cmd_status(&storage, &id, "in-progress", cli.json),
         Commands::Close { id } => cmd_close(&storage, &id, cli.json),
         Commands::Reopen { id } => cmd_status(&storage, &id, "open", cli.json),
         Commands::Dep { id, dep_id } => cmd_dep(&storage, &id, &dep_id, cli.json),
@@ -220,8 +197,6 @@ fn main() -> Result<()> {
         Commands::DepCycle => cmd_dep_cycle(&storage, cli.json),
         Commands::Tree { id, full } => cmd_tree(&storage, &id, full, cli.json),
         Commands::Note { id, content } => cmd_note(&storage, &id, content, cli.json),
-        Commands::Archive { id } => cmd_archive(&storage, &id, cli.json),
-        Commands::Unarchive { id } => cmd_unarchive(&storage, &id, cli.json),
         Commands::Delete { id, force } => cmd_delete(&storage, &id, force, cli.json),
         Commands::Query { filter } => cmd_query(&storage, filter),
     }
@@ -320,16 +295,11 @@ fn cmd_list(
     storage: &Storage,
     status: Option<String>,
     tag: Option<String>,
-    all: bool,
     json: bool,
 ) -> Result<()> {
     ensure_init(storage)?;
 
-    let tickets = if all {
-        storage.load_all_with_archived()?
-    } else {
-        storage.load_all()?
-    };
+    let tickets = storage.load_all()?;
 
     let status_filter: Option<Status> = status.map(|s| s.parse()).transpose()?;
     let tags_filter: Vec<String> = tag
@@ -371,9 +341,7 @@ fn cmd_list(
         for t in filtered {
             let marker = match t.meta.status {
                 Status::Open => " ",
-                Status::InProgress => "*",
                 Status::Closed => "x",
-                Status::Archived => "a",
             };
             println!("[{}] {} [P{}] {}", marker, t.id(), t.meta.priority, t.title);
         }
@@ -746,7 +714,7 @@ fn dfs_cycles(
 fn cmd_tree(storage: &Storage, id: &str, full: bool, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
-    let tickets = storage.load_all_with_archived()?;
+    let tickets = storage.load_all()?;
     let ticket = storage
         .find_by_prefix(id)?
         .context(format!("Ticket '{}' not found", id))?;
@@ -859,48 +827,6 @@ fn cmd_note(storage: &Storage, id: &str, content: Option<String>, json: bool) ->
     Ok(())
 }
 
-fn cmd_archive(storage: &Storage, id: &str, json: bool) -> Result<()> {
-    ensure_init(storage)?;
-
-    let mut ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
-
-    ticket.meta.status = Status::Archived;
-    ticket.touch();
-    storage.save(&ticket)?;
-    storage.archive(ticket.id())?;
-
-    if json {
-        println!(r#"{{"archived":"{}"}}"#, ticket.id());
-    } else {
-        println!("Archived {}", ticket.id());
-    }
-    Ok(())
-}
-
-fn cmd_unarchive(storage: &Storage, id: &str, json: bool) -> Result<()> {
-    ensure_init(storage)?;
-
-    storage.unarchive(id)?;
-
-    // Reload and set status to open
-    let mut ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
-
-    ticket.meta.status = Status::Open;
-    ticket.touch();
-    storage.save(&ticket)?;
-
-    if json {
-        println!(r#"{{"unarchived":"{}"}}"#, ticket.id());
-    } else {
-        println!("Unarchived {}", ticket.id());
-    }
-    Ok(())
-}
-
 fn cmd_delete(storage: &Storage, id: &str, force: bool, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
@@ -930,7 +856,7 @@ fn cmd_delete(storage: &Storage, id: &str, force: bool, json: bool) -> Result<()
 fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
     ensure_init(storage)?;
 
-    let tickets = storage.load_all_with_archived()?;
+    let tickets = storage.load_all()?;
 
     let items: Vec<_> = tickets
         .iter()

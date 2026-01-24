@@ -4,29 +4,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const TICKETS_DIR: &str = ".tickets";
-const ARCHIVE_DIR: &str = "archive";
 
 pub struct Storage {
     tickets_dir: PathBuf,
-    archive_dir: PathBuf,
 }
 
 impl Storage {
     pub fn new() -> Self {
         let tickets_dir = PathBuf::from(TICKETS_DIR);
-        let archive_dir = tickets_dir.join(ARCHIVE_DIR);
-        Self {
-            tickets_dir,
-            archive_dir,
-        }
+        Self { tickets_dir }
     }
 
     pub fn init(&self) -> Result<()> {
         if !self.tickets_dir.exists() {
             fs::create_dir_all(&self.tickets_dir)?;
-        }
-        if !self.archive_dir.exists() {
-            fs::create_dir_all(&self.archive_dir)?;
         }
         Ok(())
     }
@@ -37,10 +28,6 @@ impl Storage {
 
     fn ticket_path(&self, id: &str) -> PathBuf {
         self.tickets_dir.join(format!("{}.md", id))
-    }
-
-    fn archive_path(&self, id: &str) -> PathBuf {
-        self.archive_dir.join(format!("{}.md", id))
     }
 
     /// Parse a markdown file with YAML frontmatter into a Ticket
@@ -121,33 +108,18 @@ impl Storage {
     pub fn load(&self, id: &str) -> Result<Option<Ticket>> {
         let path = self.ticket_path(id);
         if !path.exists() {
-            // Check archive
-            let archive_path = self.archive_path(id);
-            if archive_path.exists() {
-                let content = fs::read_to_string(&archive_path)?;
-                return Ok(Some(Self::parse_ticket(&content)?));
-            }
             return Ok(None);
         }
         let content = fs::read_to_string(&path)?;
         Ok(Some(Self::parse_ticket(&content)?))
     }
 
-    /// Load all tickets (not archived)
+    /// Load all tickets
     pub fn load_all(&self) -> Result<Vec<Ticket>> {
-        self.load_from_dir(&self.tickets_dir, false)
+        self.load_from_dir(&self.tickets_dir)
     }
 
-    /// Load all tickets including archived
-    pub fn load_all_with_archived(&self) -> Result<Vec<Ticket>> {
-        let mut tickets = self.load_from_dir(&self.tickets_dir, false)?;
-        if self.archive_dir.exists() {
-            tickets.extend(self.load_from_dir(&self.archive_dir, true)?);
-        }
-        Ok(tickets)
-    }
-
-    fn load_from_dir(&self, dir: &Path, _is_archive: bool) -> Result<Vec<Ticket>> {
+    fn load_from_dir(&self, dir: &Path) -> Result<Vec<Ticket>> {
         let mut tickets = Vec::new();
 
         if !dir.exists() {
@@ -158,12 +130,7 @@ impl Storage {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().map_or(false, |e| e == "md") {
-                // Skip archive directory when reading from tickets_dir
-                if path.file_name().map_or(false, |n| n == "archive") {
-                    continue;
-                }
-
+            if path.extension().is_some_and(|e| e == "md") {
                 let content = fs::read_to_string(&path)?;
                 match Self::parse_ticket(&content) {
                     Ok(ticket) => tickets.push(ticket),
@@ -185,32 +152,6 @@ impl Storage {
         Ok(())
     }
 
-    /// Archive a ticket (move to archive directory)
-    pub fn archive(&self, id: &str) -> Result<()> {
-        let src = self.ticket_path(id);
-        let dst = self.archive_path(id);
-
-        if !src.exists() {
-            anyhow::bail!("Ticket {} not found", id);
-        }
-
-        fs::rename(&src, &dst)?;
-        Ok(())
-    }
-
-    /// Unarchive a ticket (move back from archive)
-    pub fn unarchive(&self, id: &str) -> Result<()> {
-        let src = self.archive_path(id);
-        let dst = self.ticket_path(id);
-
-        if !src.exists() {
-            anyhow::bail!("Archived ticket {} not found", id);
-        }
-
-        fs::rename(&src, &dst)?;
-        Ok(())
-    }
-
     /// Delete a ticket permanently
     pub fn delete(&self, id: &str) -> Result<()> {
         let path = self.ticket_path(id);
@@ -218,19 +159,12 @@ impl Storage {
             fs::remove_file(&path)?;
             return Ok(());
         }
-
-        let archive_path = self.archive_path(id);
-        if archive_path.exists() {
-            fs::remove_file(&archive_path)?;
-            return Ok(());
-        }
-
         anyhow::bail!("Ticket {} not found", id);
     }
 
     /// Find a ticket by ID prefix
     pub fn find_by_prefix(&self, prefix: &str) -> Result<Option<Ticket>> {
-        let tickets = self.load_all_with_archived()?;
+        let tickets = self.load_all()?;
 
         // Exact match first
         if let Some(ticket) = tickets.iter().find(|t| t.id() == prefix) {

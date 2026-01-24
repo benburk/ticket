@@ -7,19 +7,14 @@ use serde::{Deserialize, Serialize};
 pub enum Status {
     #[default]
     Open,
-    #[serde(rename = "in-progress")]
-    InProgress,
     Closed,
-    Archived,
 }
 
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Status::Open => write!(f, "open"),
-            Status::InProgress => write!(f, "in-progress"),
             Status::Closed => write!(f, "closed"),
-            Status::Archived => write!(f, "archived"),
         }
     }
 }
@@ -29,11 +24,9 @@ impl std::str::FromStr for Status {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "open" => Ok(Status::Open),
-            "in-progress" | "in_progress" | "inprogress" | "started" => Ok(Status::InProgress),
-            "closed" | "done" => Ok(Status::Closed),
-            "archived" => Ok(Status::Archived),
-            _ => anyhow::bail!("Invalid status: {}. Use: open, in-progress, closed", s),
+            "open" | "in-progress" | "in_progress" | "inprogress" | "started" => Ok(Status::Open),
+            "closed" | "done" | "archived" => Ok(Status::Closed),
+            _ => anyhow::bail!("Invalid status: {}. Use: open, closed", s),
         }
     }
 }
@@ -146,7 +139,7 @@ impl Ticket {
     }
 
     pub fn is_open(&self) -> bool {
-        matches!(self.meta.status, Status::Open | Status::InProgress)
+        self.meta.status == Status::Open
     }
 
     pub fn is_blocked_by(&self, tickets: &[Ticket]) -> bool {
