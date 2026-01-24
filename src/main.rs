@@ -267,7 +267,23 @@ fn cmd_create(
     tags: Option<String>,
     json: bool,
 ) -> Result<()> {
+    use std::io::{self, IsTerminal, Read};
+
     ensure_init(storage)?;
+
+    // Read body from stdin if piped
+    let body = if !io::stdin().is_terminal() {
+        let mut buf = String::new();
+        io::stdin().read_to_string(&mut buf)?;
+        let trimmed = buf.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    } else {
+        None
+    };
 
     let existing = storage.all_ids()?;
 
@@ -291,6 +307,9 @@ fn cmd_create(
     ticket.meta.ticket_type = ticket_type;
     ticket.meta.parent = parent_id;
     ticket.meta.tags = tags;
+    if let Some(b) = body {
+        ticket.body = b;
+    }
 
     storage.save(&ticket)?;
 
