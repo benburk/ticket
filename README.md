@@ -92,7 +92,6 @@ git add .tickets && git commit -m "Track project tasks"
 | `archive <id>`        | Move to archive                  |
 | `unarchive <id>`      | Restore from archive             |
 | `delete <id>`         | Permanently delete               |
-| `prime`               | Output agent instructions        |
 | `query`               | Output JSON for piping to `jq`   |
 
 ## Concepts
@@ -167,22 +166,6 @@ tk query --all | jq 'group_by(.status) | map({status: .[0].status, count: length
 # Export to CSV
 tk query | jq -r '.[] | [.id, .title, .status] | @csv'
 ```
-
-## Agent Integration
-
-Use `tk prime` to output instructions for AI agents:
-
-```bash
-tk prime           # Outputs usage guide + project state
-tk prime | head    # First few lines for context window
-```
-
-The prime command outputs:
-
-- Key concepts (deps, ready, blocked)
-- Common workflow
-- Command reference
-- Current project state (if initialized)
 
 ## Philosophy
 

@@ -189,9 +189,6 @@ enum Commands {
         force: bool,
     },
 
-    /// Output agent instructions for using tk
-    Prime,
-
     /// Query tickets as JSON (pipe to jq)
     Query {
         /// Optional jq-style filter (requires jq)
@@ -229,7 +226,6 @@ fn main() -> Result<()> {
         Commands::Archive { id } => cmd_archive(&storage, &id, cli.json),
         Commands::Unarchive { id } => cmd_unarchive(&storage, &id, cli.json),
         Commands::Delete { id, force } => cmd_delete(&storage, &id, force, cli.json),
-        Commands::Prime => cmd_prime(&storage),
         Commands::Query { filter } => cmd_query(&storage, filter),
     }
 }
@@ -903,81 +899,6 @@ fn cmd_delete(storage: &Storage, id: &str, force: bool, json: bool) -> Result<()
     } else {
         println!("Deleted {}", ticket.id());
     }
-    Ok(())
-}
-
-fn cmd_prime(storage: &Storage) -> Result<()> {
-    let instructions = r#"# tk - Ticket Tracker Instructions
-
-## Overview
-tk is a minimal, git-backed ticket tracker. Tickets are markdown files in `.tickets/`.
-
-## Key Concepts
-- **deps**: Blocking dependencies. A ticket with open deps is blocked.
-- **ready**: Open tickets with no unresolved deps (work on these).
-- **blocked**: Open tickets waiting on deps.
-
-## Workflow
-1. `tk ready` - See what's available to work on
-2. `tk start <id>` - Mark ticket in-progress
-3. `tk close <id>` - Mark done when finished
-4. `tk create "title"` - Create new tickets as needed
-
-## Common Commands
-```
-tk ready                    # What can I work on?
-tk list                     # All tickets
-tk list --status open       # Filter by status
-tk list --tag backend       # Filter by tag
-tk show <id>                # Ticket details
-tk create "Fix bug" -t bug  # Create ticket
-tk start <id>               # Begin work
-tk close <id>               # Finish work
-tk dep <id> <blocker>       # Add dependency
-tk note <id> "message"      # Add note
-```
-
-## JSON Output
-Add `--json` to any command for structured output:
-```
-tk ready --json | jq '.[0].id'
-tk query | jq '.[] | select(.type=="bug")'
-```
-"#;
-
-    print!("{}", instructions);
-
-    // Add dynamic project state if initialized
-    if storage.is_initialized() {
-        let tickets = storage.load_all()?;
-        let open = tickets
-            .iter()
-            .filter(|t| t.meta.status == Status::Open)
-            .count();
-        let in_progress = tickets
-            .iter()
-            .filter(|t| t.meta.status == Status::InProgress)
-            .count();
-        let blocked_count = tickets
-            .iter()
-            .filter(|t| t.is_open() && t.is_blocked_by(&tickets))
-            .count();
-        let ready_count = tickets
-            .iter()
-            .filter(|t| t.is_open() && !t.is_blocked_by(&tickets))
-            .count();
-
-        println!("\n## Current Project State");
-        println!(
-            "- {} open ({} ready, {} blocked)",
-            open + in_progress,
-            ready_count,
-            blocked_count
-        );
-        println!("- {} in progress", in_progress);
-        println!("- {} total tickets", tickets.len());
-    }
-
     Ok(())
 }
 
