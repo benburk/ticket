@@ -21,25 +21,3 @@ pub fn generate(existing: &[String]) -> String {
     getrandom::getrandom(&mut bytes).expect("failed to get random bytes");
     format!("{}-{}", prefix, hex::encode(bytes))
 }
-
-/// Generate a child ID for hierarchical tickets
-/// e.g., "tk-a1b2" -> "tk-a1b2.1"
-pub fn generate_child(parent_id: &str, existing: &[String]) -> String {
-    let prefix = format!("{}.", parent_id);
-
-    let max_num = existing
-        .iter()
-        .filter(|id| id.starts_with(&prefix))
-        .filter_map(|id| {
-            let suffix = &id[prefix.len()..];
-            if !suffix.contains('.') {
-                suffix.parse::<u32>().ok()
-            } else {
-                None
-            }
-        })
-        .max()
-        .unwrap_or(0);
-
-    format!("{}{}", prefix, max_num + 1)
-}

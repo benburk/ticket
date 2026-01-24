@@ -152,16 +152,6 @@ impl Storage {
         Ok(())
     }
 
-    /// Delete a ticket permanently
-    pub fn delete(&self, id: &str) -> Result<()> {
-        let path = self.ticket_path(id);
-        if path.exists() {
-            fs::remove_file(&path)?;
-            return Ok(());
-        }
-        anyhow::bail!("Ticket {} not found", id);
-    }
-
     /// Find a ticket by ID prefix
     pub fn find_by_prefix(&self, prefix: &str) -> Result<Option<Ticket>> {
         let tickets = self.load_all()?;

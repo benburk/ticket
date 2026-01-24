@@ -36,7 +36,6 @@ Commands:
   dep-cycle  Detect dependency cycles
   tree       Show dependency tree for a ticket
   note       Add a timestamped note to a ticket
-  delete     Delete a ticket permanently
   query      Query tickets as JSON (pipe to jq)
 
 Options:

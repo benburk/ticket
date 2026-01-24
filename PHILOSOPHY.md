@@ -92,11 +92,7 @@ No `in-progress`—branch existence signals this. No `archived`—move files man
 
 ## Dependencies
 
-`deps` model blocking work, not related work. If A cannot start until B closes, A depends on B. Use tags or parent/child for grouping.
-
-## Parent/Child
-
-Purely organizational. Groups related tickets, provides a design doc in the parent body. Does not change git behavior—every ticket (parent or child) follows the same workflow.
+`deps` model blocking work, not related work. If A cannot start until B closes, A depends on B. Use tags for grouping.
 
 ## Types
 

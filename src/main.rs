@@ -54,9 +54,6 @@ enum Commands {
         /// Type: feat, fix, chore, docs, refactor, test
         #[arg(short = 't', long, default_value = "feat")]
         r#type: String,
-        /// Create as child of parent ticket
-        #[arg(long)]
-        parent: Option<String>,
         /// Initial tags (comma-separated)
         #[arg(long)]
         tags: Option<String>,
@@ -156,15 +153,6 @@ enum Commands {
         content: Option<String>,
     },
 
-    /// Delete a ticket permanently
-    Delete {
-        /// Ticket ID (prefix match)
-        id: String,
-        /// Skip confirmation
-        #[arg(short, long)]
-        force: bool,
-    },
-
     /// Query tickets as JSON (pipe to jq)
     Query {
         /// Optional jq-style filter (requires jq)
@@ -181,9 +169,8 @@ fn main() -> Result<()> {
         Commands::Create {
             priority,
             r#type,
-            parent,
             tags,
-        } => cmd_create(&storage, priority, &r#type, parent, tags, cli.json),
+        } => cmd_create(&storage, priority, &r#type, tags, cli.json),
         Commands::List { status, tag } => cmd_list(&storage, status, tag, cli.json),
         Commands::Show { id } => cmd_show(&storage, &id, cli.json),
         Commands::Edit { id } => cmd_edit(&storage, &id),
@@ -197,7 +184,6 @@ fn main() -> Result<()> {
         Commands::DepCycle => cmd_dep_cycle(&storage, cli.json),
         Commands::Tree { id, full } => cmd_tree(&storage, &id, full, cli.json),
         Commands::Note { id, content } => cmd_note(&storage, &id, content, cli.json),
-        Commands::Delete { id, force } => cmd_delete(&storage, &id, force, cli.json),
         Commands::Query { filter } => cmd_query(&storage, filter),
     }
 }
@@ -234,7 +220,6 @@ fn cmd_create(
     storage: &Storage,
     priority: u8,
     type_str: &str,
-    parent: Option<String>,
     tags: Option<String>,
     json: bool,
 ) -> Result<()> {
@@ -258,16 +243,7 @@ fn cmd_create(
     }
 
     let existing = storage.all_ids()?;
-
-    let (id, parent_id) = if let Some(ref parent_prefix) = parent {
-        let parent_ticket = storage
-            .find_by_prefix(parent_prefix)?
-            .context(format!("Parent '{}' not found", parent_prefix))?;
-        let child_id = id::generate_child(parent_ticket.id(), &existing);
-        (child_id, Some(parent_ticket.id().to_string()))
-    } else {
-        (id::generate(&existing), None)
-    };
+    let id = id::generate(&existing);
 
     let ticket_type: TicketType = type_str.parse()?;
     let tags: Vec<String> = tags
@@ -277,7 +253,6 @@ fn cmd_create(
     let mut ticket = Ticket::new(id.clone(), title.clone());
     ticket.meta.priority = priority;
     ticket.meta.ticket_type = ticket_type;
-    ticket.meta.parent = parent_id;
     ticket.meta.tags = tags;
     ticket.body = body.to_string();
 
@@ -375,9 +350,6 @@ fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
         println!("Status:   {}", ticket.meta.status);
         println!("Priority: P{}", ticket.meta.priority);
         println!("Type:     {}", ticket.meta.ticket_type);
-        if let Some(ref parent) = ticket.meta.parent {
-            println!("Parent:   {}", parent);
-        }
         println!("Created:  {}", ticket.meta.created.format("%Y-%m-%d %H:%M"));
         if let Some(updated) = ticket.meta.updated {
             println!("Updated:  {}", updated.format("%Y-%m-%d %H:%M"));
@@ -827,32 +799,6 @@ fn cmd_note(storage: &Storage, id: &str, content: Option<String>, json: bool) ->
     Ok(())
 }
 
-fn cmd_delete(storage: &Storage, id: &str, force: bool, json: bool) -> Result<()> {
-    ensure_init(storage)?;
-
-    let ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
-
-    if !force {
-        eprintln!(
-            "Delete {} - {}? Use --force to confirm.",
-            ticket.id(),
-            ticket.title
-        );
-        std::process::exit(1);
-    }
-
-    storage.delete(ticket.id())?;
-
-    if json {
-        println!(r#"{{"deleted":"{}"}}"#, ticket.id());
-    } else {
-        println!("Deleted {}", ticket.id());
-    }
-    Ok(())
-}
-
 fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
     ensure_init(storage)?;
 
@@ -870,7 +816,6 @@ fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
                 "deps": t.meta.deps,
                 "tags": t.meta.tags,
                 "created": t.meta.created,
-                "parent": t.meta.parent,
             })
         })
         .collect();

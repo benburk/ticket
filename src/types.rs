@@ -99,8 +99,6 @@ pub struct Frontmatter {
     pub priority: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignee: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
 }
@@ -126,7 +124,6 @@ impl Ticket {
                 ticket_type: TicketType::Feat,
                 priority: 2,
                 assignee: None,
-                parent: None,
                 tags: vec![],
             },
             title,
