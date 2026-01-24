@@ -5,6 +5,8 @@ A lightweight, git-backed ticket tracker designed for simplicity.
 Tickets are stored as Markdown files with YAML frontmatter in `.tickets/`.
 Each ticket is a separate file, making git diffs readable and merges easy.
 
+Searches parent directories for `.tickets/` (override with `TICKETS_DIR` env var).
+
 ## Install
 
 ```bash

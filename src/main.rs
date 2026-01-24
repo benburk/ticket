@@ -19,6 +19,8 @@ use types::{Note, Status, Ticket, TicketType};
 Tickets are stored as Markdown files with YAML frontmatter in .tickets/.
 Each ticket is a separate file, making git diffs readable and merges easy.
 
+Searches parent directories for .tickets/ (override with TICKETS_DIR env var).
+
 Key concepts:
   - deps: blocking dependencies (must close dep before this is ready)
   - ready: open tickets with no unresolved deps

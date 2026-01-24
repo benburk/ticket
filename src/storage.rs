@@ -11,8 +11,33 @@ pub struct Storage {
 
 impl Storage {
     pub fn new() -> Self {
-        let tickets_dir = PathBuf::from(TICKETS_DIR);
+        let tickets_dir = Self::find_tickets_dir();
         Self { tickets_dir }
+    }
+
+    /// Find .tickets directory by searching current and parent directories.
+    /// Falls back to ./.tickets if not found (for init).
+    fn find_tickets_dir() -> PathBuf {
+        // Check TICKETS_DIR env var first
+        if let Ok(dir) = std::env::var("TICKETS_DIR") {
+            return PathBuf::from(dir);
+        }
+
+        // Search current and parent directories
+        if let Ok(mut current) = std::env::current_dir() {
+            loop {
+                let candidate = current.join(TICKETS_DIR);
+                if candidate.is_dir() {
+                    return candidate;
+                }
+                if !current.pop() {
+                    break;
+                }
+            }
+        }
+
+        // Default to current directory (for init)
+        PathBuf::from(TICKETS_DIR)
     }
 
     pub fn init(&self) -> Result<()> {
