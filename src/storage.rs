@@ -51,7 +51,7 @@ impl Storage {
         self.tickets_dir.exists()
     }
 
-    fn ticket_path(&self, id: &str) -> PathBuf {
+    pub fn ticket_path(&self, id: &str) -> PathBuf {
         self.tickets_dir.join(format!("{}.md", id))
     }
 

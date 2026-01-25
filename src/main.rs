@@ -72,6 +72,12 @@ enum Commands {
         tag: Option<String>,
     },
 
+    /// Show a ticket
+    Show {
+        /// Ticket ID (prefix match)
+        id: String,
+    },
+
     /// Replace ticket title + body from stdin (expects "# Title" on first line)
     Edit {
         /// Ticket ID (prefix match)
@@ -168,6 +174,7 @@ fn main() -> Result<()> {
             tags,
         } => cmd_create(&storage, priority, &r#type, tags, cli.json),
         Commands::List { status, tag } => cmd_list(&storage, status, tag, cli.json),
+        Commands::Show { id } => cmd_show(&storage, &id),
         Commands::Edit { id } => cmd_edit(&storage, &id),
         Commands::Status { id, status } => cmd_status(&storage, &id, &status, cli.json),
         Commands::Close { id } => cmd_close(&storage, &id, cli.json),
@@ -316,6 +323,26 @@ fn cmd_list(
             println!("[{}] {} [P{}] {}", marker, t.id(), t.meta.priority, t.title);
         }
     }
+    Ok(())
+}
+
+fn cmd_show(storage: &Storage, id: &str) -> Result<()> {
+    ensure_init(storage)?;
+
+    let ticket = storage
+        .find_by_prefix(id)?
+        .context(format!("Ticket '{}' not found", id))?;
+
+    let path = std::path::Path::new(".tickets").join(format!("{}.md", ticket.id()));
+    let content = std::fs::read_to_string(&path)
+        .or_else(|_| {
+            // Try with storage's tickets_dir if not in current dir
+            let alt_path = storage.ticket_path(ticket.id());
+            std::fs::read_to_string(alt_path)
+        })
+        .context("Failed to read ticket file")?;
+
+    print!("{}", content);
     Ok(())
 }
 
