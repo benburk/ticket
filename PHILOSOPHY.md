@@ -6,7 +6,7 @@ tk does one thing: track tickets as files. It doesn't manage branches, worktrees
 
 ```bash
 tk query | jq '.[] | select(.priority < 2)'
-tk ready | head -1 | cut -d' ' -f1 | xargs git worktree add .worktrees/
+tk ready | head -1 | cut -d' ' -f1 | xargs git checkout -b
 ```
 
 ## Files Over State
@@ -25,31 +25,40 @@ tk records intent. You execute it.
 
 ### Core Model
 
-```
-ticket = branch = worktree
-```
+Separate isolation from work tracking:
 
-Every ticket gets a branch and worktree. No exceptions.
+```
+worktree = agent workspace (long-lived)
+branch   = ticket (ephemeral)
+```
 
 ### Why
 
-Agents need isolation. They run tests, bind ports, write build artifacts. Two agents in the same directory collide. Worktrees solve this. Worktrees require branches.
+Agents need isolation. They run tests, bind ports, write build artifacts. Two agents in the same directory collide. Worktrees solve this.
 
-Therefore: every ticket gets a branch.
+But worktrees are expensive to recreate—build caches, node_modules, compiled artifacts. Deleting a worktree per ticket wastes this work.
 
-This eliminates decisions:
+Solution: worktrees persist across tickets. Branches come and go within them.
 
-- "Should I branch?" → Always.
-- "Should I use a worktree?" → Always.
-- "Is this big enough?" → Doesn't matter. Always.
+```bash
+# Agent gets a worktree once
+git worktree add .worktrees/agent-1 main
+
+# Works on tickets sequentially in the same worktree
+cd .worktrees/agent-1
+git checkout -b tk-a1b2
+# ... work, merge ...
+git checkout main && git pull
+git checkout -b tk-c3d4
+# ... build artifacts preserved ...
+```
 
 ### Coordination
 
-Branch existence = in progress.
-
 ```
-no branch         → available
-branch exists     → in progress
+worktree exists   → agent is active
+branch exists     → ticket in progress
+branch on remote  → ready for review
 branch merged     → done
 ```
 
@@ -64,25 +73,14 @@ done
 
 Creating a branch claims the ticket. No locks, no status commits to main, no external coordination.
 
-```bash
-wt tk-a1b2        # Creates branch + worktree = claims ticket
-# ... work ...
-git merge tk-a1b2 # Complete
-tk close tk-a1b2
-```
-
 ### Naming
 
 ```
-branch:    <ticket-id>           # tk-a1b2
-worktree:  .worktrees/<ticket-id>
+branch:    <ticket-id>              # tk-a1b2
+worktree:  .worktrees/<agent-name>  # .worktrees/agent-1
 ```
 
-No prefixes. Ticket type lives in ticket metadata, not branch names.
-
-### Trade-offs
-
-More branches and worktrees. But they're cheap and deleted after merge. Consistency beats micro-optimization.
+Branches named by ticket. Worktrees named by agent or purpose.
 
 ## Status
 
