@@ -1,11 +1,6 @@
 # tk
 
-A lightweight, git-backed ticket tracker designed for simplicity.
-
-Tickets are stored as Markdown files with YAML frontmatter in `.tickets/`.
-Each ticket is a separate file, making git diffs readable and merges easy.
-
-Searches parent directories for `.tickets/` (override with `TICKETS_DIR` env var).
+A lightweight, git-backed ticket tracker that stores tickets as Markdown files in your repository. No external services, no databases—just files that version with your code.
 
 ## Install
 
@@ -17,6 +12,26 @@ cargo install --path .
 nix profile install github:cullback/ticket#tk
 ```
 
+## Quick Start
+
+![Demo](assets/demo.gif)
+
+```bash
+tk init                              # Create .tickets/ directory
+echo "# Fix login bug" | tk create   # Create a ticket from stdin
+tk list                              # See all tickets
+tk ready                             # See what's ready to work on
+tk close tk-a1b2                     # Close a ticket
+```
+
+## Key Features
+
+- **Git-native storage** — Each ticket is a Markdown file in `.tickets/`, making diffs readable and merges easy
+- **Dependency tracking** — Model blocking relationships with `tk dep` and see what's actionable with `tk ready`
+- **Unix-friendly** — All commands support `--json` for piping to `jq` and other tools
+- **Offline-first** — No server, no sync, no account; tickets live in your repo
+- **Prefix matching** — Reference `tk-a1b2c3d4` as just `tk-a1` when unambiguous
+
 ## Usage
 
 ```
@@ -26,6 +41,7 @@ Commands:
   init       Initialize ticket tracking in current directory
   create     Create a new ticket from stdin (expects "# Title" on first line)
   list       List tickets
+  show       Show a ticket
   edit       Replace ticket title + body from stdin (expects "# Title" on first line)
   status     Change ticket status
   close      Close a ticket
