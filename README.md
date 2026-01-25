@@ -28,6 +28,7 @@ tk close tk-a1b2                     # Close a ticket
 
 - **Git-native storage** — Each ticket is a Markdown file in `.tickets/`, making diffs readable and merges easy
 - **Dependency tracking** — Model blocking relationships with `tk dep` and see what's actionable with `tk ready`
+- **Tags** — Organize tickets with `--tags backend,urgent` and filter with `--tag backend`
 - **Unix-friendly** — All commands support `--json` for piping to `jq` and other tools
 - **Offline-first** — No server, no sync, no account; tickets live in your repo
 - **Prefix matching** — Reference `tk-a1b2c3d4` as just `tk-a1` when unambiguous
@@ -51,9 +52,10 @@ Commands:
   ready      List tickets ready to work on (open, no unresolved deps)
   blocked    List blocked tickets (open, has unresolved deps)
   dep-cycle  Detect dependency cycles
-  tree       Show dependency tree for a ticket
+  tree       Show dependency tree (all tickets if no ID given)
   note       Add a timestamped note to a ticket
   query      Query tickets as JSON (pipe to jq)
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --json     Output in JSON format
