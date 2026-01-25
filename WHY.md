@@ -41,9 +41,9 @@ Sequential IDs (`#1`, `#2`, `#3`) seem intuitive, but:
 - **Coordination required**: Need central authority to assign numbers
 - **Predictable**: Competitors can enumerate your ticket count
 
-Hash-based IDs (`tk-a1b2`) provide:
+Random hex IDs (`tk-a1b2`) provide:
 
-- **Conflict-free creation**: UUID → SHA256 → truncate = practically unique
+- **Conflict-free creation**: Random bytes → hex = practically unique
 - **Parallel-safe**: Multiple agents create tickets simultaneously on different branches
 - **Automatic scaling**: Start with 4 hex chars, extend if collisions occur
 - **Opaque**: No information leakage about project size
@@ -91,16 +91,16 @@ This is the killer feature for agents:
 - Workflow-oriented queries reduce context usage
 - Prioritization becomes obvious (ready + high priority = do this)
 
-## Why Archive Instead of Delete?
+## Why No Archive or Delete Commands?
 
-Delete is permanent. Archive is reversible:
+We removed both:
 
-- **Safety**: Accidentally archived? Restore it
-- **History**: Completed work remains searchable
-- **Compliance**: Some organizations require ticket retention
-- **Context**: Agents can search archived tickets for project memory
+- **Archive adds complexity**: Another status, another directory, more commands
+- **Delete is just `rm`**: `rm .tickets/tk-a1b2.md` works fine
+- **Git is your safety net**: Accidentally deleted? `git checkout -- .tickets/`
+- **Closed tickets stay searchable**: No need to move them; just filter by status
 
-Archive moves files to `.tickets/archive/`. Delete removes them forever.
+If you want to hide old tickets, move them manually. The filesystem is the UI.
 
 ## Why Rust Instead of Bash?
 
@@ -144,7 +144,7 @@ Both work. YAML wins because:
 
 TOML would have been slightly cleaner syntax but less familiar.
 
-## Why Priority 1-3 Instead of Labels?
+## Why Priority 0-4 Instead of Labels?
 
 Labels are flexible but chaotic:
 
@@ -154,9 +154,11 @@ Labels are flexible but chaotic:
 
 Numeric priority is simple:
 
-- **P1**: Do this now
-- **P2**: Do this soon (default)
-- **P3**: Do this eventually
+- **P0**: Critical, drop everything
+- **P1**: High, do this soon
+- **P2**: Normal (default)
+- **P3**: Low priority
+- **P4**: Backlog, someday maybe
 
 Agents can sort by priority without understanding label semantics.
 
@@ -178,7 +180,7 @@ Ticket types follow [conventional commits](https://www.conventionalcommits.org/)
 The old types were Jira-inspired but didn't connect to anything:
 
 - "task" is too generic—what kind of task?
-- "epic" is about size, not type—use parent-child for hierarchy
+- "epic" is about size, not type—use deps and tags for grouping
 - "bug" vs "fix" is the same thing with different names
 
 **Why conventional commits matter:**
