@@ -1,13 +1,8 @@
-set dotenv-load
-
 build:
     cargo build
 
 run:
     cargo run
-
-watch:
-    watchexec -r -e rs,html,css,js -- cargo run
 
 check:
     #!/usr/bin/env fish
@@ -24,10 +19,3 @@ format:
     cargo fmt
     fd -e nix | xargs -r nixfmt
     rg -l '[^\n]\z' --multiline | xargs -r sed -i -e '$a\\'
-
-db-init:
-    sqlx database drop
-    sqlx database create
-    sqlx migrate run
-    sqlite3 $DATABASE_PATH < seeds/seed.sql
-    rm -f storage/*
