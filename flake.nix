@@ -49,6 +49,9 @@
               rust-analyzer
               rustfmt
               dprint
+              fd
+              ripgrep
+              nixfmt-rfc-style
             ];
           };
         }

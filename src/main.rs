@@ -285,7 +285,7 @@ fn cmd_list(
 
     let mut filtered: Vec<_> = tickets
         .iter()
-        .filter(|t| status_filter.map_or(true, |s| t.meta.status == s))
+        .filter(|t| status_filter.is_none_or(|s| t.meta.status == s))
         .filter(|t| {
             tags_filter.is_empty() || tags_filter.iter().all(|tag| t.meta.tags.contains(tag))
         })
@@ -558,7 +558,7 @@ fn cmd_blocked(storage: &Storage, tag: Option<String>, json: bool) -> Result<()>
                         tickets
                             .iter()
                             .find(|x| x.id() == *d)
-                            .map_or(false, |x| x.is_open())
+                            .is_some_and(|x| x.is_open())
                     })
                     .collect();
                 serde_json::json!({
@@ -581,7 +581,7 @@ fn cmd_blocked(storage: &Storage, tag: Option<String>, json: bool) -> Result<()>
                     tickets
                         .iter()
                         .find(|x| x.id() == *d)
-                        .map_or(false, |x| x.is_open())
+                        .is_some_and(|x| x.is_open())
                 })
                 .cloned()
                 .collect();
@@ -705,7 +705,7 @@ fn cmd_tree(storage: &Storage, id: Option<&str>, full: bool, json: bool) -> Resu
                         tickets
                             .iter()
                             .find(|x| x.id() == d)
-                            .map_or(true, |x| !full && !x.is_open())
+                            .is_none_or(|x| !full && !x.is_open())
                     })
             })
             .collect();
