@@ -98,6 +98,13 @@ enum Commands {
         id: String,
     },
 
+    /// Delete a ticket
+    #[command(alias = "rm")]
+    Delete {
+        /// Ticket ID (prefix match)
+        id: String,
+    },
+
     /// Add a blocking dependency
     Dep {
         /// Ticket that is blocked
@@ -185,6 +192,7 @@ fn main() -> Result<()> {
         Commands::Status { id, status } => cmd_status(&storage, &id, &status, cli.json),
         Commands::Close { id } => cmd_close(&storage, &id, cli.json),
         Commands::Reopen { id } => cmd_status(&storage, &id, "open", cli.json),
+        Commands::Delete { id } => cmd_delete(&storage, &id, cli.json),
         Commands::Dep { id, dep_id } => cmd_dep(&storage, &id, &dep_id, cli.json),
         Commands::Undep { id, dep_id } => cmd_undep(&storage, &id, &dep_id, cli.json),
         Commands::Tag { id, tags } => cmd_tag(&storage, &id, &tags, cli.json),
@@ -650,6 +658,34 @@ fn cmd_untag(storage: &Storage, id: &str, tags: &[String], json: bool) -> Result
         );
     } else {
         println!("{} tags: {}", ticket.id(), ticket.meta.tags.join(", "));
+    }
+    Ok(())
+}
+
+fn cmd_delete(storage: &Storage, id: &str, json: bool) -> Result<()> {
+    ensure_init(storage)?;
+
+    let ticket = storage
+        .find_by_prefix(id)?
+        .context(format!("Ticket '{}' not found", id))?;
+    let ticket_id = ticket.id().to_string();
+
+    std::fs::remove_file(storage.ticket_path(&ticket_id)).context("Failed to remove ticket file")?;
+
+    // Strip the deleted id from other tickets' deps so none dangle.
+    for mut other in storage.load_all()? {
+        let before = other.meta.deps.len();
+        other.meta.deps.retain(|d| d != &ticket_id);
+        if other.meta.deps.len() != before {
+            other.touch();
+            storage.save(&other)?;
+        }
+    }
+
+    if json {
+        println!(r#"{{"id":"{}","deleted":true}}"#, ticket_id);
+    } else {
+        println!("Deleted {}", ticket_id);
     }
     Ok(())
 }
