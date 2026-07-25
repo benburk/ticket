@@ -32,6 +32,10 @@ test:
 build:
     cargo build --release
 
+# Install tk onto PATH via the flake (nix profile)
+install:
+    nix profile install .
+
 # Run the project
 run *args:
     cargo run -- {{ args }}

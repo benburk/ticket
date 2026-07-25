@@ -96,11 +96,11 @@ No `in-progress`—branch existence signals this. No `archived`—move files man
 
 Earlier versions carried a conventional-commits `type` (feat/fix/…) and a numeric `priority`. Both are gone. They failed the same test everything else here passes: **a field should only exist if something acts on it, and only if a human isn't taxed to guess it.**
 
-`type` (feat/fix/chore/…) is the weakest part of conventional commits. In practice the choice is a dice roll—real changes are a fix *and* a refactor *and* a feature—and the type is usually redundant with the title ("fix namespaced SVG styles" already reads as a fix). Its one real payoff, driving semver + changelogs, only matters for *published packages*, and even then people prefer scope over type: knowing *where* a change landed beats knowing *what kind*. That's derivable—`git diff --stat` on the ticket's branch tells you the scope for free—so no annotation is warranted.
+`type` (feat/fix/chore/…) is the weakest part of conventional commits. In practice the choice is a dice roll—real changes are a fix _and_ a refactor _and_ a feature—and the type is usually redundant with the title ("fix namespaced SVG styles" already reads as a fix). Its one real payoff, driving semver + changelogs, only matters for _published packages_, and even then people prefer scope over type: knowing _where_ a change landed beats knowing _what kind_. That's derivable—`git diff --stat` on the ticket's branch tells you the scope for free—so no annotation is warranted.
 
 `priority` is a fake signal. Everything drifts to the default; you spend attention curating numbers instead of working. Real urgency is derivable from structure: a ticket that blocks others (`deps`) and has aged is high-priority without anyone setting a field.
 
-What survives does so because it's *structural and underivable*: `deps` (blocking, gates readiness) and `tags` (grouping related work / epics—the one classification a diff can't reveal). Phase itself isn't stored at all: to-do / in-progress / done is derived from branch existence and `status`. Fewer fields, fewer decisions, less state to synchronize.
+What survives does so because it's _structural and underivable_: `deps` (blocking, gates readiness) and `tags` (grouping related work / epics—the one classification a diff can't reveal). Phase itself isn't stored at all: to-do / in-progress / done is derived from branch existence and `status`. Fewer fields, fewer decisions, less state to synchronize.
 
 ## Notes Over Comments
 

@@ -670,7 +670,8 @@ fn cmd_delete(storage: &Storage, id: &str, json: bool) -> Result<()> {
         .context(format!("Ticket '{}' not found", id))?;
     let ticket_id = ticket.id().to_string();
 
-    std::fs::remove_file(storage.ticket_path(&ticket_id)).context("Failed to remove ticket file")?;
+    std::fs::remove_file(storage.ticket_path(&ticket_id))
+        .context("Failed to remove ticket file")?;
 
     // Strip the deleted id from other tickets' deps so none dangle.
     for mut other in storage.load_all()? {
