@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use std::collections::{HashMap, HashSet};
 use std::process::Command;
 use storage::Storage;
-use types::{Note, Status, Ticket, TicketType};
+use types::{Note, Status, Ticket};
 
 #[derive(Parser)]
 #[command(name = "tk")]
@@ -50,13 +50,7 @@ enum Commands {
 
     /// Create a new ticket from stdin (expects "# Title" on first line)
     Create {
-        /// Priority (0=critical, 4=backlog)
-        #[arg(short, long, default_value = "2")]
-        priority: u8,
-        /// Type: feat, fix, chore, docs, refactor, test
-        #[arg(short = 't', long, default_value = "feat")]
-        r#type: String,
-        /// Initial tags (comma-separated)
+        /// Initial tags (comma-separated) — for grouping related work
         #[arg(long)]
         tags: Option<String>,
     },
@@ -88,7 +82,7 @@ enum Commands {
     Status {
         /// Ticket ID (prefix match)
         id: String,
-        /// New status: open, in-progress, closed
+        /// New status: open, closed
         status: String,
     },
 
@@ -118,6 +112,22 @@ enum Commands {
         id: String,
         /// Dependency to remove
         dep_id: String,
+    },
+
+    /// Add tags to a ticket (for grouping related work)
+    Tag {
+        /// Ticket to tag
+        id: String,
+        /// Tags to add (space- or comma-separated)
+        tags: Vec<String>,
+    },
+
+    /// Remove tags from a ticket
+    Untag {
+        /// Ticket to untag
+        id: String,
+        /// Tags to remove (space- or comma-separated)
+        tags: Vec<String>,
     },
 
     /// List tickets ready to work on (open, no unresolved deps)
@@ -168,11 +178,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init => cmd_init(&storage, cli.json),
-        Commands::Create {
-            priority,
-            r#type,
-            tags,
-        } => cmd_create(&storage, priority, &r#type, tags, cli.json),
+        Commands::Create { tags } => cmd_create(&storage, tags, cli.json),
         Commands::List { status, tag } => cmd_list(&storage, status, tag, cli.json),
         Commands::Show { id } => cmd_show(&storage, &id),
         Commands::Edit { id } => cmd_edit(&storage, &id),
@@ -181,6 +187,8 @@ fn main() -> Result<()> {
         Commands::Reopen { id } => cmd_status(&storage, &id, "open", cli.json),
         Commands::Dep { id, dep_id } => cmd_dep(&storage, &id, &dep_id, cli.json),
         Commands::Undep { id, dep_id } => cmd_undep(&storage, &id, &dep_id, cli.json),
+        Commands::Tag { id, tags } => cmd_tag(&storage, &id, &tags, cli.json),
+        Commands::Untag { id, tags } => cmd_untag(&storage, &id, &tags, cli.json),
         Commands::Ready { tag } => cmd_ready(&storage, tag, cli.json),
         Commands::Blocked { tag } => cmd_blocked(&storage, tag, cli.json),
         Commands::DepCycle => cmd_dep_cycle(&storage, cli.json),
@@ -218,13 +226,7 @@ fn cmd_init(storage: &Storage, json: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_create(
-    storage: &Storage,
-    priority: u8,
-    type_str: &str,
-    tags: Option<String>,
-    json: bool,
-) -> Result<()> {
+fn cmd_create(storage: &Storage, tags: Option<String>, json: bool) -> Result<()> {
     use std::io::Read;
 
     ensure_init(storage)?;
@@ -247,14 +249,11 @@ fn cmd_create(
     let existing = storage.all_ids()?;
     let id = id::generate(&existing);
 
-    let ticket_type: TicketType = type_str.parse()?;
     let tags: Vec<String> = tags
         .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
         .unwrap_or_default();
 
     let mut ticket = Ticket::new(id.clone(), title.clone());
-    ticket.meta.priority = priority;
-    ticket.meta.ticket_type = ticket_type;
     ticket.meta.tags = tags;
     ticket.body = body.to_string();
 
@@ -291,12 +290,7 @@ fn cmd_list(
         })
         .collect();
 
-    filtered.sort_by(|a, b| {
-        a.meta
-            .priority
-            .cmp(&b.meta.priority)
-            .then_with(|| a.meta.created.cmp(&b.meta.created))
-    });
+    filtered.sort_by_key(|t| t.meta.created);
 
     if json {
         let items: Vec<_> = filtered
@@ -306,8 +300,8 @@ fn cmd_list(
                     "id": t.id(),
                     "title": t.title,
                     "status": t.meta.status.to_string(),
-                    "priority": t.meta.priority,
-                    "type": t.meta.ticket_type.to_string(),
+                    "deps": t.meta.deps,
+                    "tags": t.meta.tags,
                 })
             })
             .collect();
@@ -320,7 +314,7 @@ fn cmd_list(
                 Status::Open => " ",
                 Status::Closed => "x",
             };
-            println!("[{}] {} [P{}] {}", marker, t.id(), t.meta.priority, t.title);
+            println!("[{}] {} {}", marker, t.id(), t.title);
         }
     }
     Ok(())
@@ -504,7 +498,7 @@ fn cmd_ready(storage: &Storage, tag: Option<String>, json: bool) -> Result<()> {
         })
         .collect();
 
-    ready.sort_by_key(|t| t.meta.priority);
+    ready.sort_by_key(|t| t.meta.created);
 
     if json {
         let items: Vec<_> = ready
@@ -513,7 +507,7 @@ fn cmd_ready(storage: &Storage, tag: Option<String>, json: bool) -> Result<()> {
                 serde_json::json!({
                     "id": t.id(),
                     "title": t.title,
-                    "priority": t.meta.priority,
+                    "deps": t.meta.deps,
                 })
             })
             .collect();
@@ -522,7 +516,7 @@ fn cmd_ready(storage: &Storage, tag: Option<String>, json: bool) -> Result<()> {
         println!("No ready tickets.");
     } else {
         for t in ready {
-            println!("{} [P{}] {}", t.id(), t.meta.priority, t.title);
+            println!("{} {}", t.id(), t.title);
         }
     }
     Ok(())
@@ -544,7 +538,7 @@ fn cmd_blocked(storage: &Storage, tag: Option<String>, json: bool) -> Result<()>
         })
         .collect();
 
-    blocked.sort_by_key(|t| t.meta.priority);
+    blocked.sort_by_key(|t| t.meta.created);
 
     if json {
         let items: Vec<_> = blocked
@@ -586,13 +580,76 @@ fn cmd_blocked(storage: &Storage, tag: Option<String>, json: bool) -> Result<()>
                 .cloned()
                 .collect();
             println!(
-                "{} [P{}] {} (blocked by: {})",
+                "{} {} (blocked by: {})",
                 t.id(),
-                t.meta.priority,
                 t.title,
                 blocking.join(", ")
             );
         }
+    }
+    Ok(())
+}
+
+/// Split tags given as either separate args or comma-separated, trimmed.
+fn split_tags(tags: &[String]) -> Vec<String> {
+    tags.iter()
+        .flat_map(|t| t.split(','))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn cmd_tag(storage: &Storage, id: &str, tags: &[String], json: bool) -> Result<()> {
+    ensure_init(storage)?;
+
+    let mut ticket = storage
+        .find_by_prefix(id)?
+        .context(format!("Ticket '{}' not found", id))?;
+
+    for tag in split_tags(tags) {
+        if !ticket.meta.tags.contains(&tag) {
+            ticket.meta.tags.push(tag);
+        }
+    }
+    ticket.touch();
+    storage.save(&ticket)?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "id": ticket.id(),
+                "tags": ticket.meta.tags,
+            }))?
+        );
+    } else {
+        println!("{} tags: {}", ticket.id(), ticket.meta.tags.join(", "));
+    }
+    Ok(())
+}
+
+fn cmd_untag(storage: &Storage, id: &str, tags: &[String], json: bool) -> Result<()> {
+    ensure_init(storage)?;
+
+    let mut ticket = storage
+        .find_by_prefix(id)?
+        .context(format!("Ticket '{}' not found", id))?;
+
+    let remove = split_tags(tags);
+    ticket.meta.tags.retain(|t| !remove.contains(t));
+    ticket.touch();
+    storage.save(&ticket)?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({
+                "id": ticket.id(),
+                "tags": ticket.meta.tags,
+            }))?
+        );
+    } else {
+        println!("{} tags: {}", ticket.id(), ticket.meta.tags.join(", "));
     }
     Ok(())
 }
@@ -839,8 +896,6 @@ fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
                 "id": t.id(),
                 "title": t.title,
                 "status": t.meta.status.to_string(),
-                "priority": t.meta.priority,
-                "type": t.meta.ticket_type.to_string(),
                 "deps": t.meta.deps,
                 "tags": t.meta.tags,
                 "created": t.meta.created,

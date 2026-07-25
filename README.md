@@ -71,8 +71,6 @@ Run `tk <command> --help` for command-specific options.
 ---
 id: tk-a1b2
 status: open
-type: feat
-priority: 2
 created: 2024-01-15T10:30:00Z
 deps:
   - tk-c3d4

@@ -92,13 +92,15 @@ No `in-progress`—branch existence signals this. No `archived`—move files man
 
 `deps` model blocking work, not related work. If A cannot start until B closes, A depends on B. Use tags for grouping.
 
-## Types
+## No Types, No Priority
 
-Ticket types align with conventional commits because tickets become commits become changelogs. The pipeline is:
+Earlier versions carried a conventional-commits `type` (feat/fix/…) and a numeric `priority`. Both are gone. They failed the same test everything else here passes: **a field should only exist if something acts on it, and only if a human isn't taxed to guess it.**
 
-```
-ticket (type: fix) → commit (fix:) → semver (PATCH) → changelog
-```
+`type` (feat/fix/chore/…) is the weakest part of conventional commits. In practice the choice is a dice roll—real changes are a fix *and* a refactor *and* a feature—and the type is usually redundant with the title ("fix namespaced SVG styles" already reads as a fix). Its one real payoff, driving semver + changelogs, only matters for *published packages*, and even then people prefer scope over type: knowing *where* a change landed beats knowing *what kind*. That's derivable—`git diff --stat` on the ticket's branch tells you the scope for free—so no annotation is warranted.
+
+`priority` is a fake signal. Everything drifts to the default; you spend attention curating numbers instead of working. Real urgency is derivable from structure: a ticket that blocks others (`deps`) and has aged is high-priority without anyone setting a field.
+
+What survives does so because it's *structural and underivable*: `deps` (blocking, gates readiness) and `tags` (grouping related work / epics—the one classification a diff can't reveal). Phase itself isn't stored at all: to-do / in-progress / done is derived from branch existence and `status`. Fewer fields, fewer decisions, less state to synchronize.
 
 ## Notes Over Comments
 

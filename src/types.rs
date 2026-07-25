@@ -24,58 +24,11 @@ impl std::str::FromStr for Status {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "open" | "in-progress" | "in_progress" | "inprogress" | "started" => Ok(Status::Open),
-            "closed" | "done" | "archived" => Ok(Status::Closed),
+            // Two statuses only. In-progress isn't a status — an existing branch
+            // named for the ticket signals that (see PHILOSOPHY.md).
+            "open" => Ok(Status::Open),
+            "closed" | "done" => Ok(Status::Closed),
             _ => anyhow::bail!("Invalid status: {}. Use: open, closed", s),
-        }
-    }
-}
-
-/// Ticket type (aligned with conventional commits)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum TicketType {
-    #[default]
-    Feat, // New feature (MINOR version bump)
-    Fix,      // Bug fix (PATCH version bump)
-    Chore,    // Maintenance, deps, no user impact
-    Docs,     // Documentation only
-    Refactor, // Code change, no behavior change
-    Test,     // Test coverage
-}
-
-impl std::fmt::Display for TicketType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TicketType::Feat => write!(f, "feat"),
-            TicketType::Fix => write!(f, "fix"),
-            TicketType::Chore => write!(f, "chore"),
-            TicketType::Docs => write!(f, "docs"),
-            TicketType::Refactor => write!(f, "refactor"),
-            TicketType::Test => write!(f, "test"),
-        }
-    }
-}
-
-impl std::str::FromStr for TicketType {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            // Primary types
-            "feat" | "feature" => Ok(TicketType::Feat),
-            "fix" | "bug" => Ok(TicketType::Fix),
-            "chore" => Ok(TicketType::Chore),
-            "docs" => Ok(TicketType::Docs),
-            "refactor" => Ok(TicketType::Refactor),
-            "test" => Ok(TicketType::Test),
-            // Legacy aliases
-            "task" => Ok(TicketType::Feat),
-            "epic" => Ok(TicketType::Feat),
-            _ => anyhow::bail!(
-                "Invalid type: {}. Use: feat, fix, chore, docs, refactor, test",
-                s
-            ),
         }
     }
 }
@@ -93,10 +46,6 @@ pub struct Frontmatter {
     pub updated: Option<DateTime<Utc>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<DateTime<Utc>>,
-    #[serde(default, rename = "type")]
-    pub ticket_type: TicketType,
-    #[serde(default)]
-    pub priority: u8,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assignee: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -121,8 +70,6 @@ impl Ticket {
                 created: Utc::now(),
                 updated: None,
                 closed: None,
-                ticket_type: TicketType::Feat,
-                priority: 2,
                 assignee: None,
                 tags: vec![],
             },
