@@ -20,6 +20,7 @@ nix profile install github:cullback/ticket#tk
 tk init                              # Create .tickets/ directory
 echo "# Fix login bug" | tk create   # Create a ticket from stdin
 tk list                              # See all tickets
+tk -C ../another-repo ready          # Read another repo without cd
 tk ready                             # See what's ready to work on
 tk close tk-a1b2                     # Close a ticket
 ```
@@ -29,7 +30,7 @@ tk close tk-a1b2                     # Close a ticket
 - **Git-native storage** — Each ticket is a Markdown file in `.tickets/`, making diffs readable and merges easy
 - **Dependency tracking** — Model blocking relationships with `tk dep` and see what's actionable with `tk ready`
 - **Tags** — Organize tickets with `--tags backend,urgent` and filter with `--tag backend`
-- **Unix-friendly** — All commands support `--json` for piping to `jq` and other tools
+- **Unix-friendly** — Ticket-returning commands support `--json` for piping to `jq` and other tools
 - **Offline-first** — No server, no sync, no account; tickets live in your repo
 - **Prefix matching** — Reference `tk-a1b2c3d4` as just `tk-a1` when unambiguous
 
@@ -58,12 +59,13 @@ Commands:
   help       Print this message or the help of the given subcommand(s)
 
 Options:
-      --json     Output in JSON format
-  -h, --help     Print help
-  -V, --version  Print version
+  -C, --directory <PATH>  Run as if started in this directory
+      --json              Output in JSON format
+  -h, --help              Print help
+  -V, --version           Print version
 ```
 
-Run `tk <command> --help` for command-specific options.
+Run `tk <command> --help` for command-specific options. Read commands fail when `.tickets/` is absent; only `tk init` creates it. `tk --json show <id>` includes the Markdown body and every timestamp.
 
 ## Ticket Format
 
@@ -85,6 +87,21 @@ Add JWT-based auth with refresh tokens.
 [2024-01-15 10:45 alice] Started research on JWT libraries
 [2024-01-15 14:30 alice] Going with jsonwebtoken crate
 ```
+
+## Rust API
+
+The package exports the same parser and store used by `tk`:
+
+```rust
+use ticket::Store;
+
+let store = Store::open("/path/to/repo");
+let tickets = store.load_all()?;
+let ticket = store.create("Fix login".into(), String::new(), vec!["auth".into()])?;
+store.close(ticket.id())?;
+```
+
+The library owns ticket files and dependency rules. It does not run Git or manage branches, worktrees, agents, or CI.
 
 ## Philosophy
 

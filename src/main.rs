@@ -1,14 +1,9 @@
-mod id;
-mod storage;
-mod types;
-
 use anyhow::{Context, Result};
-use chrono::Utc;
 use clap::{Parser, Subcommand};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::process::Command;
-use storage::Storage;
-use types::{Note, Status, Ticket};
+use ticket::{Status, Storage, Ticket};
 
 #[derive(Parser)]
 #[command(name = "tk")]
@@ -35,6 +30,10 @@ Workflow:
 )]
 #[command(version)]
 struct Cli {
+    /// Run as if started in this directory
+    #[arg(short = 'C', long = "directory", global = true)]
+    directory: Option<PathBuf>,
+
     /// Output in JSON format
     #[arg(long, global = true)]
     json: bool,
@@ -76,6 +75,12 @@ enum Commands {
     Edit {
         /// Ticket ID (prefix match)
         id: String,
+        /// Replace tags (comma-separated)
+        #[arg(long)]
+        tags: Option<String>,
+        /// Replace blocking dependencies (comma-separated ticket IDs)
+        #[arg(long)]
+        deps: Option<String>,
     },
 
     /// Change ticket status
@@ -181,14 +186,26 @@ enum Commands {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let storage = Storage::new();
+    let storage = match cli.directory.as_deref() {
+        Some(directory) => {
+            anyhow::ensure!(
+                directory.is_dir(),
+                "no directory at {}",
+                directory.display()
+            );
+            Storage::open(directory)
+        }
+        None => Storage::default(),
+    };
 
     match cli.command {
         Commands::Init => cmd_init(&storage, cli.json),
         Commands::Create { tags } => cmd_create(&storage, tags, cli.json),
         Commands::List { status, tag } => cmd_list(&storage, status, tag, cli.json),
-        Commands::Show { id } => cmd_show(&storage, &id),
-        Commands::Edit { id } => cmd_edit(&storage, &id),
+        Commands::Show { id } => cmd_show(&storage, &id, cli.json),
+        Commands::Edit { id, tags, deps } => {
+            cmd_edit(&storage, &id, tags.as_deref(), deps.as_deref(), cli.json)
+        }
         Commands::Status { id, status } => cmd_status(&storage, &id, &status, cli.json),
         Commands::Close { id } => cmd_close(&storage, &id, cli.json),
         Commands::Reopen { id } => cmd_status(&storage, &id, "open", cli.json),
@@ -207,10 +224,11 @@ fn main() -> Result<()> {
 }
 
 fn ensure_init(storage: &Storage) -> Result<()> {
-    if !storage.is_initialized() {
-        storage.init()?;
-        eprintln!("Initialized .tickets/");
-    }
+    anyhow::ensure!(
+        storage.is_initialized(),
+        "ticket tracking is not initialized at {} (run `tk init`)",
+        storage.directory().display()
+    );
     Ok(())
 }
 
@@ -254,23 +272,21 @@ fn cmd_create(storage: &Storage, tags: Option<String>, json: bool) -> Result<()>
         anyhow::bail!("No title found. First line must be: # Your Title");
     }
 
-    let existing = storage.all_ids()?;
-    let id = id::generate(&existing);
-
     let tags: Vec<String> = tags
-        .map(|t| t.split(',').map(|s| s.trim().to_string()).collect())
+        .map(|tags| {
+            tags.split(',')
+                .map(str::trim)
+                .filter(|tag| !tag.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default();
-
-    let mut ticket = Ticket::new(id.clone(), title.clone());
-    ticket.meta.tags = tags;
-    ticket.body = body.to_string();
-
-    storage.save(&ticket)?;
+    let ticket = storage.create(title, body.to_string(), tags)?;
 
     if json {
-        println!(r#"{{"id":"{}","title":"{}"}}"#, id, title);
+        println!("{}", serde_json::to_string(&ticket)?);
     } else {
-        println!("Created {} - {}", id, title);
+        println!("Created {} - {}", ticket.id(), ticket.title);
     }
     Ok(())
 }
@@ -328,32 +344,31 @@ fn cmd_list(
     Ok(())
 }
 
-fn cmd_show(storage: &Storage, id: &str) -> Result<()> {
+fn cmd_show(storage: &Storage, id: &str, json: bool) -> Result<()> {
     ensure_init(storage)?;
-
     let ticket = storage
         .find_by_prefix(id)?
         .context(format!("Ticket '{}' not found", id))?;
-
-    let path = std::path::Path::new(".tickets").join(format!("{}.md", ticket.id()));
-    let content = std::fs::read_to_string(&path)
-        .or_else(|_| {
-            // Try with storage's tickets_dir if not in current dir
-            let alt_path = storage.ticket_path(ticket.id());
-            std::fs::read_to_string(alt_path)
-        })
-        .context("Failed to read ticket file")?;
-
-    print!("{}", content);
+    if json {
+        println!("{}", serde_json::to_string(&ticket)?);
+    } else {
+        print!("{}", Storage::serialize_ticket(&ticket)?);
+    }
     Ok(())
 }
 
-fn cmd_edit(storage: &Storage, id: &str) -> Result<()> {
+fn cmd_edit(
+    storage: &Storage,
+    id: &str,
+    tags: Option<&str>,
+    deps: Option<&str>,
+    json: bool,
+) -> Result<()> {
     use std::io::Read;
 
     ensure_init(storage)?;
 
-    let mut ticket = storage
+    let ticket = storage
         .find_by_prefix(id)?
         .context(format!("Ticket '{}' not found", id))?;
 
@@ -371,29 +386,37 @@ fn cmd_edit(storage: &Storage, id: &str) -> Result<()> {
         anyhow::bail!("No title found. First line must be: # Your Title");
     }
 
-    ticket.title = title;
-    ticket.body = body.to_string();
-    storage.save(&ticket)?;
+    let values = |source: &str| {
+        source
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    let tags = tags.map(values).unwrap_or(ticket.meta.tags);
+    let deps = deps.map(values).unwrap_or(ticket.meta.deps);
+    let ticket = storage.replace(id, title, body.to_string(), tags, deps)?;
 
-    println!("Updated {}", ticket.id());
+    if json {
+        println!("{}", serde_json::to_string(&ticket)?);
+    } else {
+        println!("Updated {}", ticket.id());
+    }
     Ok(())
 }
 
 fn cmd_status(storage: &Storage, id: &str, status_str: &str, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
-    let mut ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
-
     let new_status: Status = status_str.parse()?;
-    ticket.meta.status = new_status;
-    ticket.touch();
-
-    storage.save(&ticket)?;
+    let ticket = match new_status {
+        Status::Open => storage.reopen(id)?,
+        Status::Closed => storage.close(id)?,
+    };
 
     if json {
-        println!(r#"{{"id":"{}","status":"{}"}}"#, ticket.id(), new_status);
+        println!("{}", serde_json::to_string(&ticket)?);
     } else {
         println!("{} -> {}", ticket.id(), new_status);
     }
@@ -403,18 +426,10 @@ fn cmd_status(storage: &Storage, id: &str, status_str: &str, json: bool) -> Resu
 fn cmd_close(storage: &Storage, id: &str, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
-    let mut ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
-
-    ticket.meta.status = Status::Closed;
-    ticket.meta.closed = Some(Utc::now());
-    ticket.touch();
-
-    storage.save(&ticket)?;
+    let ticket = storage.close(id)?;
 
     if json {
-        println!(r#"{{"id":"{}","status":"closed"}}"#, ticket.id());
+        println!("{}", serde_json::to_string(&ticket)?);
     } else {
         println!("Closed {}", ticket.id());
     }
@@ -665,23 +680,8 @@ fn cmd_untag(storage: &Storage, id: &str, tags: &[String], json: bool) -> Result
 fn cmd_delete(storage: &Storage, id: &str, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
-    let ticket = storage
-        .find_by_prefix(id)?
-        .context(format!("Ticket '{}' not found", id))?;
+    let ticket = storage.delete(id)?;
     let ticket_id = ticket.id().to_string();
-
-    std::fs::remove_file(storage.ticket_path(&ticket_id))
-        .context("Failed to remove ticket file")?;
-
-    // Strip the deleted id from other tickets' deps so none dangle.
-    for mut other in storage.load_all()? {
-        let before = other.meta.deps.len();
-        other.meta.deps.retain(|d| d != &ticket_id);
-        if other.meta.deps.len() != before {
-            other.touch();
-            storage.save(&other)?;
-        }
-    }
 
     if json {
         println!(r#"{{"id":"{}","deleted":true}}"#, ticket_id);
@@ -872,7 +872,7 @@ fn build_blocks_json(ticket: &Ticket, all: &[Ticket], full: bool) -> serde_json:
 fn cmd_note(storage: &Storage, id: &str, content: Option<String>, json: bool) -> Result<()> {
     ensure_init(storage)?;
 
-    let mut ticket = storage
+    let ticket = storage
         .find_by_prefix(id)?
         .context(format!("Ticket '{}' not found", id))?;
 
@@ -898,20 +898,7 @@ fn cmd_note(storage: &Storage, id: &str, content: Option<String>, json: bool) ->
         content
     };
 
-    let note = Note::new(content);
-    let formatted = note.format();
-
-    // Append note to body
-    if !ticket.body.is_empty() && !ticket.body.ends_with('\n') {
-        ticket.body.push('\n');
-    }
-    if !ticket.body.is_empty() {
-        ticket.body.push('\n');
-    }
-    ticket.body.push_str(&formatted);
-    ticket.touch();
-
-    storage.save(&ticket)?;
+    let ticket = storage.append_note(id, content)?;
 
     if json {
         println!(r#"{{"added":"{}"}}"#, ticket.id());
@@ -926,21 +913,7 @@ fn cmd_query(storage: &Storage, filter: Option<String>) -> Result<()> {
 
     let tickets = storage.load_all()?;
 
-    let items: Vec<_> = tickets
-        .iter()
-        .map(|t| {
-            serde_json::json!({
-                "id": t.id(),
-                "title": t.title,
-                "status": t.meta.status.to_string(),
-                "deps": t.meta.deps,
-                "tags": t.meta.tags,
-                "created": t.meta.created,
-            })
-        })
-        .collect();
-
-    let json_str = serde_json::to_string(&items)?;
+    let json_str = serde_json::to_string(&tickets)?;
 
     if let Some(filter) = filter {
         // Pipe through jq if filter provided

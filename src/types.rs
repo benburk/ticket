@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Ticket status
+/// The only lifecycle state stored in a ticket file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -22,18 +24,16 @@ impl std::fmt::Display for Status {
 impl std::str::FromStr for Status {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            // Two statuses only. In-progress isn't a status — an existing branch
-            // named for the ticket signals that (see PHILOSOPHY.md).
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_lowercase().as_str() {
             "open" => Ok(Status::Open),
             "closed" | "done" => Ok(Status::Closed),
-            _ => anyhow::bail!("Invalid status: {}. Use: open, closed", s),
+            _ => anyhow::bail!("Invalid status: {value}. Use: open, closed"),
         }
     }
 }
 
-/// YAML frontmatter for a ticket file
+/// YAML frontmatter persisted at the start of a ticket file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frontmatter {
     pub id: String,
@@ -50,11 +50,15 @@ pub struct Frontmatter {
     pub assignee: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Keep fields written by newer clients when an older client edits a ticket.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
 }
 
-/// A complete ticket (frontmatter + body)
-#[derive(Debug, Clone)]
+/// A complete ticket: frontmatter plus its Markdown title and body.
+#[derive(Debug, Clone, Serialize)]
 pub struct Ticket {
+    #[serde(flatten)]
     pub meta: Frontmatter,
     pub title: String,
     pub body: String,
@@ -72,6 +76,7 @@ impl Ticket {
                 closed: None,
                 assignee: None,
                 tags: vec![],
+                extra: BTreeMap::new(),
             },
             title,
             body: String::new(),
@@ -86,15 +91,28 @@ impl Ticket {
         self.meta.status == Status::Open
     }
 
+    /// Return the open dependencies currently blocking this ticket.
+    pub fn blockers<'a>(&'a self, tickets: &'a [Ticket]) -> Vec<&'a Ticket> {
+        self.meta
+            .deps
+            .iter()
+            .filter_map(|dependency| {
+                tickets
+                    .iter()
+                    .find(|ticket| ticket.id() == dependency && ticket.is_open())
+            })
+            .collect()
+    }
+
     pub fn is_blocked_by(&self, tickets: &[Ticket]) -> bool {
-        for dep_id in &self.meta.deps {
-            if let Some(dep) = tickets.iter().find(|t| t.id() == dep_id) {
-                if dep.is_open() {
-                    return true;
-                }
-            }
-        }
-        false
+        !self.blockers(tickets).is_empty()
+    }
+
+    pub fn set_status(&mut self, status: Status) {
+        let now = Utc::now();
+        self.meta.status = status;
+        self.meta.updated = Some(now);
+        self.meta.closed = (status == Status::Closed).then_some(now);
     }
 
     pub fn touch(&mut self) {
@@ -102,7 +120,7 @@ impl Ticket {
     }
 }
 
-/// A timestamped note (appended to body)
+/// A timestamped progress or decision note appended to the Markdown body.
 #[derive(Debug, Clone)]
 pub struct Note {
     pub timestamp: DateTime<Utc>,
