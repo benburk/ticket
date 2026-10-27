@@ -9,7 +9,7 @@ A lightweight, git-backed ticket tracker that stores tickets as Markdown files i
 cargo install --path .
 
 # Nix
-nix profile install github:cullback/ticket#tk
+nix profile install github:benburk/ticket#tk
 ```
 
 ## Quick Start
